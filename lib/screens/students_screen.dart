@@ -20,41 +20,52 @@ class _StudentDashboardState extends State<StudentDashboard> {
   List<Exercise> exercises = [];
   Subject? selectedSubject;
   bool isLoading = false;
+  
+  // Store service references to avoid context access in dispose
+  SocketService? _socketService;
+  AuthService? _authService;
 
   @override
   void initState() {
     super.initState();
-    _checkOnlineStatus();
-    _initializeSocket();
-    _loadSubjects();
+    // Store service references early
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _socketService = Provider.of<SocketService>(context, listen: false);
+      _authService = Provider.of<AuthService>(context, listen: false);
+      
+      _checkOnlineStatus();
+      _initializeSocket();
+      _loadSubjects();
+    });
   }
 
   Future<void> _checkOnlineStatus() async {
-    final authService = Provider.of<AuthService>(context, listen: false);
+    if (_authService == null) return;
     
     // Check if user is still online in database
-    if (authService.user?.isOnline == false) {
+    if (_authService!.user?.isOnline == false) {
       // User is marked offline, redirect to role selection
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.of(context).pushReplacementNamed('/role-selection');
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/role-selection');
+        }
       });
       return;
     }
   }
 
   void _initializeSocket() {
-    final socketService = Provider.of<SocketService>(context, listen: false);
-    final authService = Provider.of<AuthService>(context, listen: false);
+    if (_socketService == null || _authService == null) return;
     
-    socketService.connect();
-    socketService.socket?.emit('user-login', {
-      'enrollNumber': authService.user?.enrollNumber,
-      'name': authService.user?.name,
-      'role': authService.user?.role,
+    _socketService!.connect();
+    _socketService!.socket?.emit('user-login', {
+      'enrollNumber': _authService!.user?.enrollNumber,
+      'name': _authService!.user?.name,
+      'role': _authService!.user?.role,
     });
     
     // Listen for admin shutdown events
-    socketService.socket?.on('admin-shutdown', (data) {
+    _socketService!.socket?.on('admin-shutdown', (data) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -75,14 +86,15 @@ class _StudentDashboardState extends State<StudentDashboard> {
   }
 
   Future<void> _loadSubjects() async {
-    if (mounted) {
-      setState(() => isLoading = true);
-    }
+    if (!mounted) return;
+    
+    setState(() => isLoading = true);
     
     try {
-      final authService = Provider.of<AuthService>(context, listen: false);
-      final apiService = ApiService(authService);
-      subjects = await apiService.getSubjects();
+      if (_authService != null) {
+        final apiService = ApiService(_authService!);
+        subjects = await apiService.getSubjects();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -97,14 +109,15 @@ class _StudentDashboardState extends State<StudentDashboard> {
   }
 
   Future<void> _loadExercises(int subjectId) async {
-    if (mounted) {
-      setState(() => isLoading = true);
-    }
+    if (!mounted) return;
+    
+    setState(() => isLoading = true);
     
     try {
-      final authService = Provider.of<AuthService>(context, listen: false);
-      final apiService = ApiService(authService);
-      exercises = await apiService.getExercisesBySubject(subjectId);
+      if (_authService != null) {
+        final apiService = ApiService(_authService!);
+        exercises = await apiService.getExercisesBySubject(subjectId);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -118,8 +131,81 @@ class _StudentDashboardState extends State<StudentDashboard> {
     }
   }
 
+  // Enhanced logout method that properly handles student logout
+  Future<void> _handleLogout() async {
+    try {
+      print('🔄 Student logout initiated...');
+      
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Logging out...'),
+            ],
+          ),
+        ),
+      );
+
+      // 1. Emit logout event through socket to notify server
+      if (_socketService?.isConnected == true && _authService?.user != null) {
+        print('📡 Emitting user logout event...');
+        _socketService!.socket?.emit('user-logout', {
+          'enrollNumber': _authService!.user!.enrollNumber,
+          'name': _authService!.user!.name,
+          'role': _authService!.user!.role,
+        });
+        
+        // Give socket time to send the message
+        await Future.delayed(Duration(milliseconds: 500));
+      }
+
+      // 2. Disconnect socket connection
+      print('🔌 Disconnecting socket...');
+      _socketService?.disconnect();
+
+      // 3. Call auth service logout (this will update is_online to false)
+      print('🔓 Calling auth service logout...');
+      await _authService?.logout();
+
+      // 4. Close loading dialog if still mounted
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      // 5. Navigate to role selection
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/role-selection');
+      }
+
+      print('✅ Student logout completed successfully');
+      
+    } catch (e) {
+      print('❌ Error during logout: $e');
+      
+      // Close loading dialog if it's open
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Logout failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
+    // Now we can safely disconnect using stored references
+    _socketService?.disconnect();
     super.dispose();
   }
 
@@ -142,12 +228,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
           ),
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await authService.logout();
-              if (mounted) {
-                Navigator.of(context).pushReplacementNamed('/role-selection');
-              }
-            },
+            onPressed: _handleLogout, // Use the enhanced logout method
           ),
         ],
       ),

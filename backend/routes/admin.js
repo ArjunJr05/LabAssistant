@@ -1,4 +1,4 @@
-// Updated routes/admin.js - Enhanced with visible/hidden test case management
+// routes/admin.js - Complete admin routes with enhanced shutdown functionality
 const express = require('express');
 const { pool } = require('../config/database');
 const auth = require('../middleware/auth');
@@ -16,6 +16,8 @@ const adminOnly = (req, res, next) => {
 // Get dashboard analytics
 router.get('/analytics', auth, adminOnly, async (req, res) => {
   try {
+    console.log('Admin requesting analytics...');
+    
     // Get basic counts
     const totalStudents = await pool.query('SELECT COUNT(*) FROM users WHERE role = $1', ['student']);
     const totalSubjects = await pool.query('SELECT COUNT(*) FROM subjects');
@@ -34,13 +36,20 @@ router.get('/analytics', auth, adminOnly, async (req, res) => {
       LIMIT 10
     `);
     
-    res.json({
+    // Get online student count
+    const onlineStudents = await pool.query('SELECT COUNT(*) FROM users WHERE role = $1 AND is_online = true', ['student']);
+    
+    const analytics = {
       totalStudents: parseInt(totalStudents.rows[0].count),
       totalSubjects: parseInt(totalSubjects.rows[0].count),
       totalExercises: parseInt(totalExercises.rows[0].count),
       totalSubmissions: parseInt(totalSubmissions.rows[0].count),
+      onlineStudents: parseInt(onlineStudents.rows[0].count),
       recentSubmissions: recentSubmissions.rows
-    });
+    };
+    
+    console.log('Analytics sent:', analytics);
+    res.json(analytics);
   } catch (error) {
     console.error('Error fetching analytics:', error);
     res.status(500).json({ message: 'Server error' });
@@ -63,10 +72,11 @@ router.post('/subjects', auth, adminOnly, async (req, res) => {
     }
     
     const result = await pool.query(
-      'INSERT INTO subjects (name, code) VALUES ($1, $2) RETURNING *',
+      'INSERT INTO subjects (name, code, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING *',
       [name, code]
     );
     
+    console.log('Subject created:', result.rows[0]);
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Error creating subject:', error);
@@ -131,9 +141,9 @@ router.post('/exercises', auth, adminOnly, async (req, res) => {
     const result = await pool.query(`
       INSERT INTO exercises (
         subject_id, title, description, input_format, output_format, 
-        constraints, test_cases, hidden_test_cases, difficulty_level
+        constraints, test_cases, hidden_test_cases, difficulty_level, created_at, updated_at
       ) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()) RETURNING *
     `, [
       subject_id, 
       title, 
@@ -252,6 +262,7 @@ router.get('/exercises', auth, adminOnly, async (req, res) => {
       };
     });
     
+    console.log(`Admin requested ${exercisesWithCounts.length} exercises`);
     res.json(exercisesWithCounts);
   } catch (error) {
     console.error('Error fetching exercises:', error);
@@ -259,12 +270,14 @@ router.get('/exercises', auth, adminOnly, async (req, res) => {
   }
 });
 
-// Get online users for admin dashboard
+// Enhanced get online users with real-time status
 router.get('/online-users', auth, adminOnly, async (req, res) => {
   try {
     // Get currently online users from database using is_online field
     const result = await pool.query(`
-      SELECT id, name, enroll_number, year, section, batch, role, is_online, last_active
+      SELECT 
+        id, name, enroll_number, year, section, batch, role, 
+        is_online, last_active, created_at
       FROM users
       WHERE role = 'student' AND is_online = true
       ORDER BY last_active DESC
@@ -280,11 +293,25 @@ router.get('/online-users', auth, adminOnly, async (req, res) => {
       role: user.role,
       isOnline: user.is_online,
       lastActive: user.last_active,
-      status: 'online'
+      status: 'online',
+      connectionDuration: user.last_active ? 
+        Math.floor((Date.now() - new Date(user.last_active).getTime()) / 1000) : 0
     }));
     
-    console.log(`📊 Admin requested online users: ${onlineUsers.length} found`);
-    res.json(onlineUsers);
+    console.log(`Admin requested online users: ${onlineUsers.length} found`);
+    
+    // Also get Socket.IO connection count for comparison
+    const io = req.app.get('socketio') || req.app.get('io');
+    const socketConnections = io ? io.sockets.sockets.size : 0;
+    
+    res.json({
+      users: onlineUsers,
+      meta: {
+        totalOnline: onlineUsers.length,
+        socketConnections: socketConnections,
+        timestamp: new Date().toISOString()
+      }
+    });
   } catch (error) {
     console.error('Error fetching online users:', error);
     res.status(500).json({ message: 'Server error' });
@@ -320,41 +347,242 @@ router.get('/exercises/:exerciseId', auth, adminOnly, async (req, res) => {
   }
 });
 
-// Admin shutdown notification - notifies all students and disconnects them
+// Enhanced admin shutdown notification - notifies all students and disconnects them
 router.post('/shutdown-notification', auth, adminOnly, async (req, res) => {
   try {
-    console.log('🔴 Admin shutdown notification received');
+    console.log('🔴 ADMIN SHUTDOWN NOTIFICATION RECEIVED');
+    console.log('🔍 Admin details:', {
+      userId: req.user.userId,
+      role: req.user.role,
+      enrollNumber: req.user.enrollNumber
+    });
     
-    // Set all students offline
-    await pool.query(
-      'UPDATE users SET is_online = false WHERE role = $1',
+    // 1. Get count of currently online students
+    const onlineStudentsResult = await pool.query(
+      'SELECT COUNT(*) as count, array_agg(name) as names FROM users WHERE role = $1 AND is_online = true',
       ['student']
     );
     
-    // Mark all active sessions as inactive
-    await pool.query(
-      'UPDATE user_sessions SET is_active = false, session_end = CURRENT_TIMESTAMP WHERE is_active = true'
+    const onlineCount = parseInt(onlineStudentsResult.rows[0].count);
+    const onlineNames = onlineStudentsResult.rows[0].names || [];
+    
+    console.log(`📊 Found ${onlineCount} online students to disconnect`);
+    console.log(`👥 Online students: ${onlineNames.join(', ')}`);
+    
+    // 2. Set all students offline in database
+    const updateResult = await pool.query(
+      'UPDATE users SET is_online = false, last_active = NOW(), updated_at = NOW() WHERE role = $1 RETURNING name, enroll_number',
+      ['student']
     );
     
-    // Get Socket.IO instance and emit shutdown event
-    const io = req.app.get('socketio');
+    console.log(`✅ Set ${updateResult.rows.length} students offline in database`);
+    
+    // 3. Mark all active student sessions as inactive
+    const sessionResult = await pool.query(
+      `UPDATE user_sessions 
+       SET is_active = false, session_end = NOW() 
+       WHERE user_id IN (SELECT id FROM users WHERE role = 'student') 
+       AND is_active = true 
+       RETURNING user_id`
+    );
+    
+    console.log(`✅ Ended ${sessionResult.rows.length} active student sessions`);
+    
+    // 4. Get Socket.IO instance and emit shutdown events
+    const io = req.app.get('socketio') || req.app.get('io');
     if (io) {
-      console.log('📡 Broadcasting admin shutdown to all clients');
-      io.emit('admin-shutdown', {
+      console.log('📡 Broadcasting admin shutdown to all connected clients...');
+      
+      const shutdownData = {
         message: 'Admin has logged out. Server is shutting down.',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        onlineStudentCount: onlineCount,
+        reason: 'admin_logout'
+      };
+      
+      // Emit to all connected sockets
+      io.emit('admin-shutdown', shutdownData);
+      
+      // Also emit user status changes for each student
+      updateResult.rows.forEach(student => {
+        io.emit('user-status-changed', {
+          enrollNumber: student.enroll_number,
+          name: student.name,
+          isOnline: false,
+          lastActive: new Date(),
+          reason: 'admin_shutdown'
+        });
       });
       
-      // Disconnect all sockets after a short delay
+      console.log(`📡 Shutdown notifications sent to all connected clients`);
+      
+      // Disconnect all client sockets after a delay to ensure messages are received
       setTimeout(() => {
-        console.log('🔌 Disconnecting all client sockets');
-        io.disconnectSockets();
-      }, 2000);
+        console.log('🔌 Disconnecting all client sockets...');
+        
+        // Get all connected sockets and disconnect them
+        const sockets = io.sockets.sockets;
+        sockets.forEach((socket) => {
+          console.log(`   Disconnecting socket: ${socket.id}`);
+          socket.emit('force-disconnect', {
+            reason: 'admin_logout',
+            message: 'Server is shutting down due to admin logout'
+          });
+          socket.disconnect(true);
+        });
+        
+        console.log(`✅ Disconnected ${sockets.size} client socket(s)`);
+        
+        // Additional cleanup - force disconnect all sockets
+        setTimeout(() => {
+          io.disconnectSockets(true);
+          console.log('🧹 Forced disconnection of all remaining sockets');
+        }, 1000);
+        
+      }, 2000); // 2 second delay to ensure messages are delivered
+      
+    } else {
+      console.log('⚠️  Socket.IO instance not found - cannot broadcast shutdown');
     }
     
-    res.json({ message: 'Shutdown notification sent successfully' });
+    // 5. Prepare shutdown statistics
+    const shutdownStats = {
+      timestamp: new Date().toISOString(),
+      adminUser: req.user.enrollNumber,
+      studentsDisconnected: onlineCount,
+      studentsAffected: updateResult.rows.length,
+      sessionsEnded: sessionResult.rows.length,
+      studentNames: onlineNames
+    };
+    
+    console.log('📊 SHUTDOWN STATISTICS:', shutdownStats);
+    
+    // 6. Respond with success
+    res.json({ 
+      success: true,
+      message: 'Admin shutdown notification sent successfully',
+      stats: {
+        studentsNotified: onlineCount,
+        studentsSetOffline: updateResult.rows.length,
+        sessionsEnded: sessionResult.rows.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+    
+    console.log('✅ Admin shutdown notification completed successfully');
+    
   } catch (error) {
-    console.error('Error sending shutdown notification:', error);
+    console.error('💥 Error during admin shutdown notification:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error during shutdown notification',
+      error: error.message 
+    });
+  }
+});
+
+// Get all students (for admin monitoring)
+router.get('/students', auth, adminOnly, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        id, name, enroll_number, year, section, batch, 
+        is_online, last_active, created_at
+      FROM users 
+      WHERE role = 'student'
+      ORDER BY batch, section, name
+    `);
+    
+    console.log(`Admin requested all students: ${result.rows.length} found`);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching students:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get submission statistics
+router.get('/submissions/stats', auth, adminOnly, async (req, res) => {
+  try {
+    // Get overall submission statistics
+    const overallStats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_submissions,
+        COUNT(DISTINCT user_id) as unique_students,
+        COUNT(CASE WHEN status = 'passed' THEN 1 END) as passed_submissions,
+        AVG(score) as average_score
+      FROM submissions
+    `);
+    
+    // Get submissions by exercise
+    const exerciseStats = await pool.query(`
+      SELECT 
+        e.id, e.title, 
+        COUNT(s.id) as submission_count,
+        COUNT(CASE WHEN s.status = 'passed' THEN 1 END) as passed_count,
+        AVG(s.score) as average_score
+      FROM exercises e
+      LEFT JOIN submissions s ON e.id = s.exercise_id
+      GROUP BY e.id, e.title
+      ORDER BY submission_count DESC
+    `);
+    
+    res.json({
+      overall: overallStats.rows[0],
+      byExercise: exerciseStats.rows
+    });
+  } catch (error) {
+    console.error('Error fetching submission stats:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update exercise
+router.put('/exercises/:exerciseId', auth, adminOnly, async (req, res) => {
+  try {
+    const { exerciseId } = req.params;
+    const { 
+      title, 
+      description, 
+      input_format,
+      output_format,
+      constraints,
+      test_cases, 
+      hidden_test_cases, 
+      difficulty_level 
+    } = req.body;
+    
+    if (!title || !description || !test_cases) {
+      return res.status(400).json({ message: 'Title, description, and test cases are required' });
+    }
+    
+    const result = await pool.query(`
+      UPDATE exercises 
+      SET title = $1, description = $2, input_format = $3, output_format = $4, 
+          constraints = $5, test_cases = $6, hidden_test_cases = $7, 
+          difficulty_level = $8, updated_at = NOW()
+      WHERE id = $9
+      RETURNING *
+    `, [
+      title, 
+      description, 
+      input_format || null,
+      output_format || null,
+      constraints || null,
+      JSON.stringify(test_cases), 
+      JSON.stringify(hidden_test_cases || []), 
+      difficulty_level || 'medium', 
+      exerciseId
+    ]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Exercise not found' });
+    }
+    
+    console.log('Exercise updated:', result.rows[0].title);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating exercise:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -63,6 +63,39 @@ class ApiService {
     }
   }
 
+  // Admin shutdown notification method
+  Future<bool> sendAdminShutdownNotification() async {
+    try {
+      print('🚨 Sending admin shutdown notification...');
+      
+      final url = await baseUrl;
+      final response = await http.post(
+        Uri.parse('$url/admin/shutdown-notification'),
+        headers: authService.authHeaders,
+      );
+
+      print('Shutdown notification response status: ${response.statusCode}');
+      print('Shutdown notification response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('✅ Shutdown notification sent successfully');
+        return true;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        print('❌ Failed to send shutdown notification: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('❌ Error sending shutdown notification: $e');
+      return false;
+    }
+  }
+
+  // Helper method to check API connectivity
+
   // Seed sample data for testing
   Future<bool> seedSampleData() async {
     try {

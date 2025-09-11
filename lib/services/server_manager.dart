@@ -2,38 +2,25 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'config_service.dart';
 
 class ServerManager extends ChangeNotifier {
   Process? _serverProcess;
   bool _isServerRunning = false;
-  String _serverIP = '10.106.124.130'; // Default IP
-  static const int _serverPort = 3000;
   
   bool get isServerRunning => _isServerRunning;
-  String get serverIP => _serverIP;
-  String get serverUrl => 'http://$_serverIP:$_serverPort';
   
-  ServerManager() {
-    _loadServerIP();
-  }
+  Future<String> get serverIP async => await ConfigService.getServerIp();
+  Future<String> get serverUrl async => await ConfigService.getServerUrl();
   
-  // Load server IP from preferences
-  Future<void> _loadServerIP() async {
-    final prefs = await SharedPreferences.getInstance();
-    _serverIP = prefs.getString('server_ip') ?? '10.106.124.130';
-    notifyListeners();
-  }
+  ServerManager();
   
-  // Save server IP to preferences
   Future<void> setServerIP(String ip) async {
-    _serverIP = ip;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('server_ip', ip);
+    await ConfigService.setServerIp(ip);
+    ConfigService.clearCache();
     notifyListeners();
   }
   
-  // Start the Node.js server
   Future<bool> startServer() async {
     try {
       if (_serverProcess != null) {
@@ -55,13 +42,15 @@ class ServerManager extends ChangeNotifier {
         return false;
       }
       
-      // Start npm start process
-      _serverProcess = await Process.start(
-        'npm',
-        ['start'],
-        workingDirectory: backendPath,
-        mode: ProcessStartMode.detached,
-      );
+      // Check if Node.js and npm are available
+      final hasNodeAndNpm = await _checkNodeAndNpm();
+      if (!hasNodeAndNpm) {
+        print('❌ Node.js or npm not found. Please install Node.js from https://nodejs.org/');
+        return false;
+      }
+      
+      // Try to start the server with different approaches
+      _serverProcess = await _startServerProcess(backendPath);
       
       if (_serverProcess != null) {
         print('✅ Server process started with PID: ${_serverProcess!.pid}');
@@ -142,10 +131,11 @@ class ServerManager extends ChangeNotifier {
   // Check if server is online by hitting the status endpoint
   Future<bool> checkServerStatus() async {
     try {
-      print('🔍 Checking server status at: $serverUrl/api/status');
+      final url = await serverUrl;
+      print('🔍 Checking server status at: $url/api/status');
       
       final response = await http.get(
-        Uri.parse('$serverUrl/api/status'),
+        Uri.parse('$url/api/status'),
         headers: {'Content-Type': 'application/json'},
       ).timeout(const Duration(seconds: 5));
       
@@ -172,6 +162,94 @@ class ServerManager extends ChangeNotifier {
     }
   }
   
+  // Try different approaches to start the server process
+  Future<Process?> _startServerProcess(String backendPath) async {
+    if (Platform.isWindows) {
+      // Try multiple approaches on Windows
+      final approaches = [
+        // Approach 1: Use cmd.exe
+        () => Process.start('cmd', ['/c', 'npm', 'start'], 
+            workingDirectory: backendPath, mode: ProcessStartMode.detached),
+        
+        // Approach 2: Use PowerShell
+        () => Process.start('powershell', ['-Command', 'npm start'], 
+            workingDirectory: backendPath, mode: ProcessStartMode.detached),
+        
+        // Approach 3: Try npm.cmd directly
+        () => Process.start('npm.cmd', ['start'], 
+            workingDirectory: backendPath, mode: ProcessStartMode.detached),
+        
+        // Approach 4: Try with full path to npm
+        () => Process.start('C:\\Program Files\\nodejs\\npm.cmd', ['start'], 
+            workingDirectory: backendPath, mode: ProcessStartMode.detached),
+      ];
+      
+      for (int i = 0; i < approaches.length; i++) {
+        try {
+          print('🔧 Trying approach ${i + 1} to start npm...');
+          final process = await approaches[i]();
+          print('✅ Successfully started with approach ${i + 1}');
+          return process;
+        } catch (e) {
+          print('❌ Approach ${i + 1} failed: $e');
+          if (i == approaches.length - 1) {
+            print('💥 All approaches failed on Windows');
+          }
+        }
+      }
+      return null;
+    } else {
+      // Unix-like systems
+      try {
+        print('🔧 Starting npm on Unix-like system...');
+        return await Process.start('npm', ['start'], 
+            workingDirectory: backendPath, mode: ProcessStartMode.detached);
+      } catch (e) {
+        print('❌ Failed to start npm on Unix: $e');
+        return null;
+      }
+    }
+  }
+
+  // Check if Node.js and npm are available on the system
+  Future<bool> _checkNodeAndNpm() async {
+    try {
+      // Check Node.js
+      ProcessResult nodeResult;
+      if (Platform.isWindows) {
+        nodeResult = await Process.run('cmd', ['/c', 'node', '--version']);
+      } else {
+        nodeResult = await Process.run('node', ['--version']);
+      }
+      
+      if (nodeResult.exitCode != 0) {
+        print('❌ Node.js not found');
+        return false;
+      }
+      
+      print('✅ Node.js found: ${nodeResult.stdout.toString().trim()}');
+      
+      // Check npm
+      ProcessResult npmResult;
+      if (Platform.isWindows) {
+        npmResult = await Process.run('cmd', ['/c', 'npm', '--version']);
+      } else {
+        npmResult = await Process.run('npm', ['--version']);
+      }
+      
+      if (npmResult.exitCode != 0) {
+        print('❌ npm not found');
+        return false;
+      }
+      
+      print('✅ npm found: ${npmResult.stdout.toString().trim()}');
+      return true;
+    } catch (e) {
+      print('❌ Error checking Node.js/npm: $e');
+      return false;
+    }
+  }
+
   // Kill any existing Node.js processes (cleanup utility)
   Future<void> killExistingNodeProcesses() async {
     try {

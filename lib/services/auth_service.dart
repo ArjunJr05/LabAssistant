@@ -6,10 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../models/user_model.dart';
 import 'server_manager.dart';
+import 'config_service.dart';
 
 class AuthService extends ChangeNotifier {
-  static const String baseUrl = 'http://localhost:3000/api';
-  
   User? _user;
   String? _token;
   bool _isLoading = false;
@@ -96,8 +95,8 @@ class AuthService extends ChangeNotifier {
         print('✅ Server started successfully');
       }
 
-      // Make API call (use server manager's URL for dynamic IP)
-      final apiUrl = isAdminLogin ? baseUrl : '${_serverManager.serverUrl}/api';
+      // Make API call (use config service for dynamic IP)
+      final apiUrl = await ConfigService.getApiBaseUrl();
       print('🌐 Making API call to: $apiUrl/auth/login');
       
       final response = await http.post(
@@ -189,8 +188,9 @@ class AuthService extends ChangeNotifier {
         return false;
       }
 
+      final apiUrl = await ConfigService.getApiBaseUrl();
       final response = await http.post(
-        Uri.parse('$baseUrl/auth/register'),
+        Uri.parse('$apiUrl/auth/register'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'name': name,

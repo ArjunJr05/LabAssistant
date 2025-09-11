@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/config_service.dart';
 
 class ServerConfigScreen extends StatefulWidget {
   const ServerConfigScreen({super.key});
@@ -16,8 +17,12 @@ class _ServerConfigScreenState extends State<ServerConfigScreen> {
   @override
   void initState() {
     super.initState();
-    final authService = Provider.of<AuthService>(context, listen: false);
-    _ipController.text = authService.serverManager.serverIP;
+    _loadCurrentIP();
+  }
+
+  Future<void> _loadCurrentIP() async {
+    final currentIP = await ConfigService.getServerIp();
+    _ipController.text = currentIP;
   }
 
   @override
@@ -214,7 +219,7 @@ class _ServerConfigScreenState extends State<ServerConfigScreen> {
     final authService = Provider.of<AuthService>(context, listen: false);
     
     // Temporarily set the IP for testing
-    final originalIP = authService.serverManager.serverIP;
+    final originalIP = await ConfigService.getServerIp();
     await authService.serverManager.setServerIP(_ipController.text);
     
     final isOnline = await authService.serverManager.checkServerStatus();

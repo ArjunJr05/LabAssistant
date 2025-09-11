@@ -24,8 +24,22 @@ class _StudentDashboardState extends State<StudentDashboard> {
   @override
   void initState() {
     super.initState();
+    _checkOnlineStatus();
     _initializeSocket();
     _loadSubjects();
+  }
+
+  Future<void> _checkOnlineStatus() async {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    
+    // Check if user is still online in database
+    if (authService.user?.isOnline == false) {
+      // User is marked offline, redirect to role selection
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushReplacementNamed('/role-selection');
+      });
+      return;
+    }
   }
 
   void _initializeSocket() {
@@ -37,6 +51,26 @@ class _StudentDashboardState extends State<StudentDashboard> {
       'enrollNumber': authService.user?.enrollNumber,
       'name': authService.user?.name,
       'role': authService.user?.role,
+    });
+    
+    // Listen for admin shutdown events
+    socketService.socket?.on('admin-shutdown', (data) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Admin has logged out. Redirecting to login...'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        
+        // Redirect to role selection after a short delay
+        Future.delayed(Duration(seconds: 2), () {
+          if (mounted) {
+            Navigator.of(context).pushReplacementNamed('/role-selection');
+          }
+        });
+      }
     });
   }
 
@@ -97,6 +131,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
             icon: const Icon(Icons.logout),
             onPressed: () async {
               await authService.logout();
+              if (mounted) {
+                Navigator.of(context).pushReplacementNamed('/role-selection');
+              }
             },
           ),
         ],

@@ -3,6 +3,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/database');
+const auth = require('../middleware/auth');
 
 const router = express.Router();
 const JWT_SECRET = '1341ae2e12f9d31a0cc42a5225b885012f16583b997b49133a68d148e03e2f5c3cf74c9d0c3da7cf37dea2143040a09b3abe1ac35393ccef1e6b9f7d3f1ac9d5';
@@ -37,8 +38,8 @@ router.post('/register', async (req, res) => {
 
     // Insert user (always as student)
     const result = await pool.query(
-      'INSERT INTO users (name, enroll_number, year, section, batch, password, role) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, enroll_number, role, year, section, batch',
-      [name, enrollNumber, year, section, batch, hashedPassword, 'student']
+      'INSERT INTO users (name, enroll_number, year, section, batch, password, role, is_online) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, name, enroll_number, role, year, section, batch, is_online',
+      [name, enrollNumber, year, section, batch, hashedPassword, 'student', true]
     );
 
     const token = jwt.sign(
@@ -99,9 +100,9 @@ router.post('/login', async (req, res) => {
 
       const user = adminUser.rows[0];
 
-      // Update last active
+      // Update last active and set online status
       await pool.query(
-        'UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = $1',
+        'UPDATE users SET last_active = CURRENT_TIMESTAMP, is_online = true WHERE id = $1',
         [user.id]
       );
 
@@ -150,9 +151,9 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // Update last active
+    // Update last active and set online status
     await pool.query(
-      'UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = $1',
+      'UPDATE users SET last_active = CURRENT_TIMESTAMP, is_online = true WHERE id = $1',
       [user.id]
     );
 
@@ -216,8 +217,8 @@ router.post('/register-admin', async (req, res) => {
 
     // Insert admin user
     const result = await pool.query(
-      'INSERT INTO users (name, enroll_number, year, section, batch, password, role) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, enroll_number, role, year, section, batch',
-      [name, username, 'ADMIN', 'ADM', '2024', hashedPassword, 'admin']
+      'INSERT INTO users (name, enroll_number, year, section, batch, password, role, is_online) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, name, enroll_number, role, year, section, batch, is_online',
+      [name, username, 'ADMIN', 'ADM', '2024', hashedPassword, 'admin', true]
     );
 
     const token = jwt.sign(
@@ -237,13 +238,27 @@ router.post('/register-admin', async (req, res) => {
   }
 });
 
-// Logout
-router.post('/logout', async (req, res) => {
+// Logout endpoint to set user offline
+router.post('/logout', auth, async (req, res) => {
   try {
+    const userId = req.user.userId;
+    
+    // Set user offline
+    await pool.query(
+      'UPDATE users SET is_online = false WHERE id = $1',
+      [userId]
+    );
+    
+    // Mark active sessions as inactive
+    await pool.query(
+      'UPDATE user_sessions SET is_active = false, session_end = CURRENT_TIMESTAMP WHERE user_id = $1 AND is_active = true',
+      [userId]
+    );
+    
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
-    console.error('Logout error:', error);
-    res.status(500).json({ message: 'Server error during logout' });
+    console.error('Error during logout:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

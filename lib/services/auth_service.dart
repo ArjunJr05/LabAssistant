@@ -353,41 +353,44 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    print('🚪 LOGOUT initiated');
-    
-    // If admin is logging out, stop the server and disconnect all students
-    final wasAdmin = _user?.role == 'admin';
-    if (wasAdmin) {
-      print('🛑 Admin logout detected - Stopping server and disconnecting students...');
+    try {
+      // Check if current user is admin before logout
+      final wasAdmin = _user?.role == 'admin';
       
-      try {
-        // First, notify all connected students about server shutdown
-        final apiUrl = await ConfigService.getApiBaseUrl();
+      if (wasAdmin) {
+        // Notify all students about server shutdown
         await http.post(
-          Uri.parse('$apiUrl/admin/shutdown-notification'),
+          Uri.parse('${await ConfigService.getApiBaseUrl()}/api/admin/shutdown-notification'),
           headers: authHeaders,
-        ).timeout(const Duration(seconds: 3));
-        print('📡 Shutdown notification sent to students');
-      } catch (e) {
-        print('⚠️ Could not notify students: $e');
+        );
+        
+        // Stop the server
+        await _serverManager.stopServer();
+      } else {
+        // For students, call logout endpoint to set offline status
+        await http.post(
+          Uri.parse('${await ConfigService.getApiBaseUrl()}/api/auth/logout'),
+          headers: authHeaders,
+        );
       }
       
-      // Stop the server
-      await _serverManager.stopServer();
-      print('✅ Server stopped for Admin logout');
+      _user = null;
+      _token = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('token');
+      await prefs.remove('user');
+      notifyListeners();
+    } catch (e) {
+      print('Error during logout: $e');
+      // Still clear local data even if server call fails
+      _user = null;
+      _token = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('token');
+      await prefs.remove('user');
+      notifyListeners();
     }
-    
-    _user = null;
-    _token = null;
-    
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token');
-    await prefs.remove('user');
-    
-    print('✅ LOGOUT completed');
-    notifyListeners();
   }
-
   Future<void> _saveUserToStorage() async {
     final prefs = await SharedPreferences.getInstance();
     if (_token != null && _user != null) {

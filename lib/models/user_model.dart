@@ -6,6 +6,7 @@ class User {
   final String section;
   final String batch;
   final String role;
+  final bool isOnline;
 
   User({
     required this.id,
@@ -15,6 +16,7 @@ class User {
     required this.section,
     required this.batch,
     required this.role,
+    this.isOnline = false,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,7 @@ class User {
       section: json['section'],
       batch: json['batch'],
       role: json['role'],
+      isOnline: json['isOnline'] ?? json['is_online'] ?? false,
     );
   }
 
@@ -38,6 +41,7 @@ class User {
       'section': section,
       'batch': batch,
       'role': role,
+      'isOnline': isOnline,
     };
   }
 }

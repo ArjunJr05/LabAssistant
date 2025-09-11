@@ -12,12 +12,12 @@ class User {
     const hashedPassword = await bcrypt.hash(password, 10);
     
     const query = `
-      INSERT INTO users (name, enroll_number, year, section, batch, password, role)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING id, name, enroll_number, year, section, batch, role, created_at
+      INSERT INTO users (name, enroll_number, year, section, batch, password, role, is_online)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id, name, enroll_number, year, section, batch, role, is_online, created_at
     `;
     
-    const values = [name, enrollNumber, year, section, batch, hashedPassword, role];
+    const values = [name, enrollNumber, year, section, batch, hashedPassword, role, false];
     const result = await this.pool.query(query, values);
     return result.rows[0];
   }
@@ -40,7 +40,7 @@ class User {
 
   async getAllStudents() {
     const query = `
-      SELECT id, name, enroll_number, year, section, batch, created_at
+      SELECT id, name, enroll_number, year, section, batch, is_online, created_at
       FROM users 
       WHERE role = 'student'
       ORDER BY batch, section, name
@@ -63,6 +63,27 @@ class User {
   async updateLastActive(userId) {
     const query = 'UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = $1';
     await this.pool.query(query, [userId]);
+  }
+
+  async setOnlineStatus(userId, isOnline) {
+    const query = 'UPDATE users SET is_online = $1, last_active = CURRENT_TIMESTAMP WHERE id = $2';
+    await this.pool.query(query, [isOnline, userId]);
+  }
+
+  async getOnlineStudents() {
+    const query = `
+      SELECT id, name, enroll_number, year, section, batch, role, is_online, last_active
+      FROM users 
+      WHERE role = 'student' AND is_online = true
+      ORDER BY last_active DESC
+    `;
+    const result = await this.pool.query(query);
+    return result.rows;
+  }
+
+  async setAllStudentsOffline() {
+    const query = 'UPDATE users SET is_online = false WHERE role = $1';
+    await this.pool.query(query, ['student']);
   }
 }
 

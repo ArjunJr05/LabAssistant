@@ -262,14 +262,12 @@ router.get('/exercises', auth, adminOnly, async (req, res) => {
 // Get online users for admin dashboard
 router.get('/online-users', auth, adminOnly, async (req, res) => {
   try {
-    // Get currently active users from database
+    // Get currently online users from database using is_online field
     const result = await pool.query(`
-      SELECT u.id, u.name, u.enroll_number, u.year, u.section, u.batch, u.role,
-             us.session_start, us.is_active
-      FROM users u
-      LEFT JOIN user_sessions us ON u.id = us.user_id AND us.is_active = true
-      WHERE u.role = 'student' AND us.is_active = true
-      ORDER BY us.session_start DESC
+      SELECT id, name, enroll_number, year, section, batch, role, is_online, last_active
+      FROM users
+      WHERE role = 'student' AND is_online = true
+      ORDER BY last_active DESC
     `);
     
     const onlineUsers = result.rows.map(user => ({
@@ -280,7 +278,8 @@ router.get('/online-users', auth, adminOnly, async (req, res) => {
       section: user.section,
       batch: user.batch,
       role: user.role,
-      sessionStart: user.session_start,
+      isOnline: user.is_online,
+      lastActive: user.last_active,
       status: 'online'
     }));
     
@@ -324,36 +323,39 @@ router.get('/exercises/:exerciseId', auth, adminOnly, async (req, res) => {
 // Admin shutdown notification - notifies all students and disconnects them
 router.post('/shutdown-notification', auth, adminOnly, async (req, res) => {
   try {
-    console.log('🛑 Admin shutdown notification received');
+    console.log('🔴 Admin shutdown notification received');
+    
+    // Set all students offline
+    await pool.query(
+      'UPDATE users SET is_online = false WHERE role = $1',
+      ['student']
+    );
     
     // Mark all active sessions as inactive
-    await pool.query('UPDATE user_sessions SET is_active = false, session_end = CURRENT_TIMESTAMP WHERE is_active = true');
+    await pool.query(
+      'UPDATE user_sessions SET is_active = false, session_end = CURRENT_TIMESTAMP WHERE is_active = true'
+    );
     
-    // Get the Socket.IO instance from the main server
+    // Get Socket.IO instance and emit shutdown event
     const io = req.app.get('socketio');
     if (io) {
-      // Emit shutdown notification to all connected clients
+      console.log('📡 Broadcasting admin shutdown to all clients');
       io.emit('admin-shutdown', {
         message: 'Admin has logged out. Server is shutting down.',
         timestamp: new Date().toISOString()
       });
       
-      console.log('📡 Shutdown notification sent to all connected students');
-      
-      // Give clients a moment to receive the message before disconnecting
+      // Disconnect all sockets after a short delay
       setTimeout(() => {
+        console.log('🔌 Disconnecting all client sockets');
         io.disconnectSockets();
-        console.log('🔌 All student connections terminated');
       }, 2000);
     }
     
-    res.json({ 
-      message: 'Shutdown notification sent successfully',
-      timestamp: new Date().toISOString()
-    });
+    res.json({ message: 'Shutdown notification sent successfully' });
   } catch (error) {
     console.error('Error sending shutdown notification:', error);
-    res.status(500).json({ message: 'Server error during shutdown notification' });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

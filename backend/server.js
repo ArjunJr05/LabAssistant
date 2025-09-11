@@ -148,6 +148,7 @@ async function initDatabase() {
         batch VARCHAR(10) NOT NULL,
         password VARCHAR(255) NOT NULL,
         role VARCHAR(20) DEFAULT 'student',
+        is_online BOOLEAN DEFAULT false,
         last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -200,6 +201,11 @@ async function initDatabase() {
       )
     `);
 
+    // Add is_online column to existing users table if it doesn't exist
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT false
+    `);
+    
     console.log('✅ Database tables initialized successfully');
     
     // Insert default admin if doesn't exist

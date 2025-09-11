@@ -7,6 +7,7 @@ class User {
   final String batch;
   final String role;
   final bool isOnline;
+  final DateTime? lastActive; // Added this field
 
   User({
     required this.id,
@@ -17,6 +18,7 @@ class User {
     required this.batch,
     required this.role,
     this.isOnline = false,
+    this.lastActive, // Added this parameter
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,11 @@ class User {
       batch: json['batch'],
       role: json['role'],
       isOnline: json['isOnline'] ?? json['is_online'] ?? false,
+      lastActive: json['lastActive'] != null 
+          ? DateTime.tryParse(json['lastActive'].toString())
+          : json['last_active'] != null 
+              ? DateTime.tryParse(json['last_active'].toString())
+              : null, // Added parsing for lastActive field
     );
   }
 
@@ -42,6 +49,7 @@ class User {
       'batch': batch,
       'role': role,
       'isOnline': isOnline,
+      'lastActive': lastActive?.toIso8601String(), // Added lastActive to JSON
     };
   }
 }

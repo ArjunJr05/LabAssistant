@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:labassistant/services/api_services.dart';
 import 'package:labassistant/services/socket_services.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import '../services/auth_service.dart';
 import '../models/user_model.dart';
 import 'admin_monitor_screen.dart';
@@ -28,6 +29,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
   SocketService? _socketService;
   AuthService? _authService;
   ApiService? _apiService;
+  Timer? _refreshTimer;
+  bool _isRefreshing = false;
 
   @override
   void initState() {
@@ -41,6 +44,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
       _initializeSocket();
       _loadAnalytics();
       _fetchOnlineUsers();
+      _startPeriodicRefresh();
+    });
+  }
+
+  void _startPeriodicRefresh() {
+    // Refresh online users every 30 seconds
+    _refreshTimer = Timer.periodic(Duration(seconds: 30), (timer) {
+      if (mounted && !_isRefreshing) {
+        print('Periodic refresh: Fetching online users...');
+        _fetchOnlineUsers();
+      }
     });
   }
 
@@ -70,14 +84,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
     
     // Listen for online users list updates
     _socketService!.socket?.on('online-users', (data) {
-      print('Online users update: $data');
-      if (data is List && mounted) {
-        setState(() {
-          onlineUsers = data
-              .map((user) => User.fromJson(user))
-              .toList();
-        });
-      }
+      print('Socket online users update: $data');
+      // Don't rely only on socket data, still fetch from API for accuracy
+      _fetchOnlineUsers();
     });
 
     _socketService!.socket?.on('student-activity', (data) {
@@ -88,6 +97,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
     _socketService!.socket?.on('connect', (_) {
       print('Socket connected, requesting online users');
       _socketService!.socket?.emit('get-online-users');
+      _fetchOnlineUsers(); // Also fetch from API
+    });
+
+    // Listen for user status changes
+    _socketService!.socket?.on('user-status-changed', (data) {
+      print('User status changed: $data');
+      _fetchOnlineUsers(); // Refresh from database
     });
   }
 
@@ -104,22 +120,72 @@ class _AdminDashboardState extends State<AdminDashboard> {
       print('Loaded analytics: $data');
     } catch (e) {
       print('Error loading analytics: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load analytics: $e'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     }
   }
   
   Future<void> _fetchOnlineUsers() async {
-    if (_apiService == null) return;
+    if (_apiService == null || _isRefreshing) return;
+    
+    _isRefreshing = true;
     
     try {
+      print('Fetching online users from API...');
       final users = await _apiService!.getOnlineUsers();
       if (mounted) {
         setState(() {
           onlineUsers = users;
         });
       }
-      print('Fetched ${users.length} online users');
+      print('Successfully fetched ${users.length} online users from database:');
+      for (var user in users) {
+        print('  - ${user.name} (${user.enrollNumber}) - Last active: ${user.lastActive}');
+      }
     } catch (e) {
       print('Error fetching online users: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to fetch online users: $e'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      _isRefreshing = false;
+    }
+  }
+
+  Future<void> _handleRefresh() async {
+    setState(() {
+      _isRefreshing = true;
+    });
+    
+    await Future.wait([
+      _fetchOnlineUsers(),
+      _loadAnalytics(),
+    ]);
+    
+    setState(() {
+      _isRefreshing = false;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Data refreshed successfully'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 1),
+        ),
+      );
     }
   }
 
@@ -260,6 +326,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   void dispose() {
+    // Cancel the refresh timer
+    _refreshTimer?.cancel();
+    
     // Now we can safely disconnect using stored references without accessing context
     _socketService?.disconnect();
     super.dispose();
@@ -275,6 +344,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
         actions: [
+          // Refresh button
+          IconButton(
+            icon: _isRefreshing 
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : Icon(Icons.refresh),
+            onPressed: _isRefreshing ? null : _handleRefresh,
+            tooltip: 'Refresh Data',
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Center(
@@ -294,7 +378,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Admin Logout (Stops Server)',
-            onPressed: _handleAdminLogout, // Use the enhanced logout method
+            onPressed: _handleAdminLogout,
           ),
         ],
       ),
@@ -330,166 +414,222 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _buildDashboardTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Admin Overview',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              Spacer(),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  borderRadius: BorderRadius.circular(20),
+    return RefreshIndicator(
+      onRefresh: _handleRefresh,
+      child: SingleChildScrollView(
+        physics: AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Admin Overview',
+                  style: Theme.of(context).textTheme.headlineMedium,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.circle, color: Colors.white, size: 12),
-                    SizedBox(width: 6),
-                    Text(
-                      'Server Online',
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ],
+                Spacer(),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.circle, color: Colors.white, size: 12),
+                      SizedBox(width: 6),
+                      Text(
+                        'Server Online',
+                        style: TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          
-          // Stats cards
-          Row(
-            children: [
-              _buildStatCard(
-                'Online Students',
-                onlineUsers.length.toString(),
-                Icons.people,
-                Colors.green,
-              ),
-              const SizedBox(width: 16),
-              _buildStatCard(
-                'Total Exercises',
-                analytics['totalExercises']?.toString() ?? '0',
-                Icons.assignment,
-                Colors.blue,
-              ),
-              const SizedBox(width: 16),
-              _buildStatCard(
-                'Active Sessions',
-                onlineUsers.length.toString(),
-                Icons.computer,
-                Colors.orange,
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 32),
-          
-          Row(
-            children: [
-              Text(
-                'Active Students',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              Spacer(),
-              Text(
-                'Total: ${onlineUsers.length}',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.bold,
+              ],
+            ),
+            const SizedBox(height: 20),
+            
+            // Stats cards
+            Row(
+              children: [
+                _buildStatCard(
+                  'Online Students',
+                  onlineUsers.length.toString(),
+                  Icons.people,
+                  Colors.green,
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          Expanded(
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Currently Online Students',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: onlineUsers.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.people_outline,
-                                    size: 64,
-                                    color: Colors.grey[400],
-                                  ),
-                                  SizedBox(height: 16),
-                                  Text(
-                                    'No students online',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey[600],
+                const SizedBox(width: 16),
+                _buildStatCard(
+                  'Total Exercises',
+                  analytics['totalExercises']?.toString() ?? '0',
+                  Icons.assignment,
+                  Colors.blue,
+                ),
+                const SizedBox(width: 16),
+                _buildStatCard(
+                  'Active Sessions',
+                  onlineUsers.length.toString(),
+                  Icons.computer,
+                  Colors.orange,
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 32),
+            
+            Row(
+              children: [
+                Text(
+                  'Active Students',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                Spacer(),
+                Text(
+                  'Total: ${onlineUsers.length}',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Last updated: ${DateTime.now().toString().substring(11, 19)}',
+                  style: TextStyle(
+                    color: Colors.grey[500],
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            Container(
+              height: 400,
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            'Currently Online Students',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          Spacer(),
+                          if (_isRefreshing)
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: onlineUsers.isEmpty
+                            ? Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.people_outline,
+                                      size: 64,
+                                      color: Colors.grey[400],
                                     ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : ListView.builder(
-                              itemCount: onlineUsers.length,
-                              itemBuilder: (context, index) {
-                                final user = onlineUsers[index];
-                                return ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: Colors.green,
-                                    child: Text(
-                                      user.name[0].toUpperCase(),
-                                      style: TextStyle(color: Colors.white),
+                                    SizedBox(height: 16),
+                                    Text(
+                                      'No students online',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.grey[600],
+                                      ),
                                     ),
-                                  ),
-                                  title: Text(user.name),
-                                  subtitle: Text('${user.batch} - ${user.section} (${user.enrollNumber})'),
-                                  trailing: Container(
-                                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green[100],
-                                      borderRadius: BorderRadius.circular(12),
+                                    SizedBox(height: 8),
+                                    ElevatedButton.icon(
+                                      onPressed: _handleRefresh,
+                                      icon: Icon(Icons.refresh),
+                                      label: Text('Refresh'),
                                     ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
+                                  ],
+                                ),
+                              )
+                            : ListView.builder(
+                                itemCount: onlineUsers.length,
+                                itemBuilder: (context, index) {
+                                  final user = onlineUsers[index];
+                                  final lastActive = user.lastActive;
+                                  final timeDiff = lastActive != null 
+                                      ? DateTime.now().difference(lastActive).inMinutes
+                                      : null;
+                                  
+                                  return ListTile(
+                                    leading: CircleAvatar(
+                                      backgroundColor: Colors.green,
+                                      child: Text(
+                                        user.name[0].toUpperCase(),
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                    ),
+                                    title: Text(user.name),
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Icon(Icons.circle, color: Colors.green, size: 8),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          'Online',
-                                          style: TextStyle(
-                                            color: Colors.green[800],
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
+                                        Text('${user.batch} - ${user.section} (${user.enrollNumber})'),
+                                        if (lastActive != null)
+                                          Text(
+                                            'Last active: ${timeDiff! < 1 ? "Just now" : "$timeDiff min ago"}',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey[600],
+                                            ),
+                                          )
+                                        else
+                                          Text(
+                                            'Last active: Unknown',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey[600],
+                                            ),
                                           ),
-                                        ),
                                       ],
                                     ),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
+                                    trailing: Container(
+                                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green[100],
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.circle, color: Colors.green, size: 8),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Online',
+                                            style: TextStyle(
+                                              color: Colors.green[800],
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -270,10 +270,12 @@ router.get('/exercises', auth, adminOnly, async (req, res) => {
   }
 });
 
-// Enhanced get online users with real-time status
+// Enhanced get online users route for routes/admin.js
 router.get('/online-users', auth, adminOnly, async (req, res) => {
   try {
-    // Get currently online users from database using is_online field
+    console.log('Admin requesting online users...');
+    
+    // Get users marked as online in database
     const result = await pool.query(`
       SELECT 
         id, name, enroll_number, year, section, batch, role, 
@@ -283,38 +285,78 @@ router.get('/online-users', auth, adminOnly, async (req, res) => {
       ORDER BY last_active DESC
     `);
     
-    const onlineUsers = result.rows.map(user => ({
-      id: user.id,
-      name: user.name,
-      enrollNumber: user.enroll_number,
-      year: user.year,
-      section: user.section,
-      batch: user.batch,
-      role: user.role,
-      isOnline: user.is_online,
-      lastActive: user.last_active,
-      status: 'online',
-      connectionDuration: user.last_active ? 
-        Math.floor((Date.now() - new Date(user.last_active).getTime()) / 1000) : 0
-    }));
+    console.log(`Found ${result.rows.length} students marked as online in database`);
     
-    console.log(`Admin requested online users: ${onlineUsers.length} found`);
+    const onlineUsers = result.rows.map(user => {
+      console.log(`  - ${user.name} (${user.enroll_number}) - Last active: ${user.last_active}`);
+      
+      return {
+        id: user.id,
+        name: user.name,
+        enrollNumber: user.enroll_number,
+        year: user.year,
+        section: user.section,
+        batch: user.batch,
+        role: user.role,
+        isOnline: user.is_online,
+        lastActive: user.last_active,
+        status: 'online'
+      };
+    });
     
-    // Also get Socket.IO connection count for comparison
+    // Also check socket connections for comparison
     const io = req.app.get('socketio') || req.app.get('io');
     const socketConnections = io ? io.sockets.sockets.size : 0;
     
-    res.json({
-      users: onlineUsers,
-      meta: {
-        totalOnline: onlineUsers.length,
-        socketConnections: socketConnections,
-        timestamp: new Date().toISOString()
-      }
-    });
+    console.log(`Returning ${onlineUsers.length} online users. Socket connections: ${socketConnections}`);
+    
+    // Return the array directly (not wrapped in an object)
+    res.json(onlineUsers);
+    
   } catch (error) {
     console.error('Error fetching online users:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ 
+      message: 'Server error',
+      error: error.message 
+    });
+  }
+});
+
+// Optional: Add a cleanup route to fix stale online statuses
+router.post('/cleanup-stale-users', auth, adminOnly, async (req, res) => {
+  try {
+    console.log('Cleaning up stale online users...');
+    
+    // Mark users as offline if they haven't been active for more than 5 minutes
+    const result = await pool.query(`
+      UPDATE users 
+      SET is_online = false, updated_at = NOW()
+      WHERE is_online = true 
+      AND role = 'student'
+      AND last_active < NOW() - INTERVAL '5 minutes'
+      RETURNING name, enroll_number, last_active
+    `);
+    
+    console.log(`Cleaned up ${result.rows.length} stale users`);
+    
+    if (result.rows.length > 0) {
+      result.rows.forEach(user => {
+        console.log(`  - Marked ${user.name} (${user.enroll_number}) as offline (last active: ${user.last_active})`);
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: `Cleaned up ${result.rows.length} stale users`,
+      cleanedUsers: result.rows
+    });
+    
+  } catch (error) {
+    console.error('Error cleaning up stale users:', error);
+    res.status(500).json({ 
+      message: 'Server error during cleanup',
+      error: error.message 
+    });
   }
 });
 
@@ -586,5 +628,7 @@ router.put('/exercises/:exerciseId', auth, adminOnly, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+
 
 module.exports = router;

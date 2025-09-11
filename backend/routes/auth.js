@@ -1,4 +1,4 @@
-// routes/auth.js - Updated with proper admin validation
+// routes/auth.js - Complete authentication routes with proper logout handling
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -11,15 +11,18 @@ const JWT_SECRET = '1341ae2e12f9d31a0cc42a5225b885012f16583b997b49133a68d148e03e
 // Register (only for students)
 router.post('/register', async (req, res) => {
   try {
+    console.log('Registration attempt:', req.body);
     const { name, enrollNumber, year, section, batch, password } = req.body;
     
     // Validate required fields
     if (!name || !enrollNumber || !year || !section || !batch || !password) {
+      console.log('Missing required fields');
       return res.status(400).json({ message: 'All fields are required' });
     }
     
     // Prevent admin registration through this route
     if (enrollNumber.toUpperCase() === 'ADMIN001' || enrollNumber.toLowerCase().includes('admin')) {
+      console.log('Attempted admin registration through student route');
       return res.status(400).json({ message: 'Invalid enrollment number. Use admin login for admin access.' });
     }
     
@@ -30,6 +33,7 @@ router.post('/register', async (req, res) => {
     );
 
     if (userExists.rows.length > 0) {
+      console.log('User already exists:', enrollNumber);
       return res.status(400).json({ message: 'User already exists with this enrollment number' });
     }
 
@@ -38,20 +42,38 @@ router.post('/register', async (req, res) => {
 
     // Insert user (always as student)
     const result = await pool.query(
-      'INSERT INTO users (name, enroll_number, year, section, batch, password, role, is_online) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, name, enroll_number, role, year, section, batch, is_online',
+      'INSERT INTO users (name, enroll_number, year, section, batch, password, role, is_online, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW()) RETURNING id, name, enroll_number, role, year, section, batch, is_online',
       [name, enrollNumber, year, section, batch, hashedPassword, 'student', true]
     );
 
+    const user = result.rows[0];
+
+    // Create session
+    await pool.query(
+      'INSERT INTO user_sessions (user_id, session_start, is_active) VALUES ($1, NOW(), $2)',
+      [user.id, true]
+    );
+
     const token = jwt.sign(
-      { userId: result.rows[0].id, role: result.rows[0].role },
+      { userId: user.id, role: user.role, enrollNumber: user.enroll_number },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
+    console.log('Student registered successfully:', user.name);
     res.status(201).json({
       message: 'User registered successfully',
       token,
-      user: result.rows[0]
+      user: {
+        id: user.id,
+        name: user.name,
+        enrollNumber: user.enroll_number,
+        role: user.role,
+        year: user.year,
+        section: user.section,
+        batch: user.batch,
+        isOnline: user.is_online
+      }
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -93,8 +115,8 @@ router.post('/login', async (req, res) => {
         const hashedPassword = await bcrypt.hash('Admin_aids@smvec', 10);
         
         adminUser = await pool.query(
-          'INSERT INTO users (name, enroll_number, year, section, batch, password, role) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, enroll_number, role, year, section, batch',
-          ['Administrator', 'ADMIN001', 'ADMIN', 'ADM', '2024', hashedPassword, 'admin']
+          'INSERT INTO users (name, enroll_number, year, section, batch, password, role, is_online, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW()) RETURNING id, name, enroll_number, role, year, section, batch, is_online',
+          ['Administrator', 'ADMIN001', 'ADMIN', 'ADM', '2024', hashedPassword, 'admin', true]
         );
       }
 
@@ -102,18 +124,18 @@ router.post('/login', async (req, res) => {
 
       // Update last active and set online status
       await pool.query(
-        'UPDATE users SET last_active = CURRENT_TIMESTAMP, is_online = true WHERE id = $1',
+        'UPDATE users SET last_active = NOW(), is_online = true, updated_at = NOW() WHERE id = $1',
         [user.id]
       );
 
       // Create session
       await pool.query(
-        'INSERT INTO user_sessions (user_id) VALUES ($1)',
-        [user.id]
+        'INSERT INTO user_sessions (user_id, session_start, is_active) VALUES ($1, NOW(), $2) ON CONFLICT (user_id) DO UPDATE SET session_start = NOW(), is_active = true',
+        [user.id, true]
       );
 
       const token = jwt.sign(
-        { userId: user.id, role: user.role },
+        { userId: user.id, role: user.role, enrollNumber: user.enroll_number },
         JWT_SECRET,
         { expiresIn: '24h' }
       );
@@ -141,6 +163,7 @@ router.post('/login', async (req, res) => {
     );
 
     if (result.rows.length === 0) {
+      console.log('Student not found:', enrollNumber);
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
@@ -149,27 +172,29 @@ router.post('/login', async (req, res) => {
     // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
+      console.log('Password mismatch for student:', enrollNumber);
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
     // Update last active and set online status
     await pool.query(
-      'UPDATE users SET last_active = CURRENT_TIMESTAMP, is_online = true WHERE id = $1',
+      'UPDATE users SET last_active = NOW(), is_online = true, updated_at = NOW() WHERE id = $1',
       [user.id]
     );
 
     // Create session
     await pool.query(
-      'INSERT INTO user_sessions (user_id) VALUES ($1)',
-      [user.id]
+      'INSERT INTO user_sessions (user_id, session_start, is_active) VALUES ($1, NOW(), $2)',
+      [user.id, true]
     );
 
     const token = jwt.sign(
-      { userId: user.id, role: user.role },
+      { userId: user.id, role: user.role, enrollNumber: user.enroll_number },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
+    console.log('Student login successful:', user.name);
     res.json({
       token,
       user: {
@@ -192,6 +217,7 @@ router.post('/login', async (req, res) => {
 // Admin Registration
 router.post('/register-admin', async (req, res) => {
   try {
+    console.log('Admin registration attempt:', req.body);
     const { name, username, password, masterPassword } = req.body;
     
     // Validate required fields
@@ -201,6 +227,7 @@ router.post('/register-admin', async (req, res) => {
     
     // Validate master password
     if (masterPassword !== 'Admin_aids@smvec') {
+      console.log('Invalid master password provided');
       return res.status(400).json({ message: 'Invalid master password' });
     }
     
@@ -211,6 +238,7 @@ router.post('/register-admin', async (req, res) => {
     );
 
     if (adminExists.rows.length > 0) {
+      console.log('Admin username already exists:', username);
       return res.status(400).json({ message: 'Admin username already exists' });
     }
 
@@ -219,20 +247,38 @@ router.post('/register-admin', async (req, res) => {
 
     // Insert admin user
     const result = await pool.query(
-      'INSERT INTO users (name, enroll_number, year, section, batch, password, role, is_online) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, name, enroll_number, role, year, section, batch, is_online',
+      'INSERT INTO users (name, enroll_number, year, section, batch, password, role, is_online, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW()) RETURNING id, name, enroll_number, role, year, section, batch, is_online',
       [name, username, 'ADMIN', 'ADM', '2024', hashedPassword, 'admin', true]
     );
 
+    const user = result.rows[0];
+
+    // Create session
+    await pool.query(
+      'INSERT INTO user_sessions (user_id, session_start, is_active) VALUES ($1, NOW(), $2)',
+      [user.id, true]
+    );
+
     const token = jwt.sign(
-      { userId: result.rows[0].id, role: result.rows[0].role },
+      { userId: user.id, role: user.role, enrollNumber: user.enroll_number },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
+    console.log('Admin registered successfully:', user.name);
     res.status(201).json({
       message: 'Admin registered successfully',
       token,
-      user: result.rows[0]
+      user: {
+        id: user.id,
+        name: user.name,
+        enrollNumber: user.enroll_number,
+        role: user.role,
+        year: user.year,
+        section: user.section,
+        batch: user.batch,
+        isOnline: user.is_online
+      }
     });
   } catch (error) {
     console.error('Admin registration error:', error);
@@ -243,24 +289,149 @@ router.post('/register-admin', async (req, res) => {
 // Logout endpoint to set user offline
 router.post('/logout', auth, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    console.log('Logout request received');
+    console.log('User from token:', req.user);
+    console.log('Request body:', req.body);
     
-    // Set user offline
-    await pool.query(
-      'UPDATE users SET is_online = false WHERE id = $1',
-      [userId]
-    );
+    const userId = req.user.userId;
+    const { enrollNumber } = req.body;
+    
+    // Use enroll number from token if not provided in body
+    const targetEnrollNumber = enrollNumber || req.user.enrollNumber;
+    
+    console.log('Target enroll number:', targetEnrollNumber);
+    
+    // Update user's online status to false
+    const updateQuery = `
+      UPDATE users 
+      SET is_online = false, 
+          last_active = NOW(), 
+          updated_at = NOW() 
+      WHERE id = $1
+      RETURNING id, name, enroll_number, is_online, last_active
+    `;
+    
+    const result = await pool.query(updateQuery, [userId]);
+    
+    if (result.rows.length === 0) {
+      console.log('User not found for logout:', userId);
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+    
+    const updatedUser = result.rows[0];
+    console.log('User offline status updated:', updatedUser);
     
     // Mark active sessions as inactive
     await pool.query(
-      'UPDATE user_sessions SET is_active = false, session_end = CURRENT_TIMESTAMP WHERE user_id = $1 AND is_active = true',
+      'UPDATE user_sessions SET is_active = false, session_end = NOW() WHERE user_id = $1 AND is_active = true',
       [userId]
     );
     
-    res.json({ message: 'Logged out successfully' });
+    console.log('User sessions marked inactive');
+    
+    // Emit socket event to notify other users if io is available
+    if (req.app && req.app.get('io')) {
+      req.app.get('io').emit('user-status-changed', {
+        enrollNumber: targetEnrollNumber,
+        name: updatedUser.name,
+        isOnline: false,
+        lastActive: updatedUser.last_active
+      });
+      console.log('Socket event emitted: user-status-changed');
+    }
+    
+    console.log('Logout completed successfully for:', updatedUser.name);
+    res.json({
+      success: true,
+      message: 'User logged out successfully',
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        enrollNumber: updatedUser.enroll_number,
+        isOnline: updatedUser.is_online,
+        lastActive: updatedUser.last_active
+      }
+    });
+    
   } catch (error) {
-    console.error('Error during logout:', error);
+    console.error('Logout error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error during logout',
+      error: error.message 
+    });
+  }
+});
+
+// Get current user info
+router.get('/me', auth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const result = await pool.query(
+      'SELECT id, name, enroll_number, role, year, section, batch, is_online, last_active FROM users WHERE id = $1',
+      [userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    const user = result.rows[0];
+    res.json({
+      id: user.id,
+      name: user.name,
+      enrollNumber: user.enroll_number,
+      role: user.role,
+      year: user.year,
+      section: user.section,
+      batch: user.batch,
+      isOnline: user.is_online,
+      lastActive: user.last_active
+    });
+  } catch (error) {
+    console.error('Get user info error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Verify token endpoint
+router.post('/verify-token', auth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const result = await pool.query(
+      'SELECT id, name, enroll_number, role, year, section, batch, is_online FROM users WHERE id = $1',
+      [userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+    
+    const user = result.rows[0];
+    res.json({
+      valid: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        enrollNumber: user.enroll_number,
+        role: user.role,
+        year: user.year,
+        section: user.section,
+        batch: user.batch,
+        isOnline: user.is_online
+      }
+    });
+  } catch (error) {
+    console.error('Token verification error:', error);
+    res.status(401).json({ 
+      valid: false, 
+      message: 'Invalid token' 
+    });
   }
 });
 

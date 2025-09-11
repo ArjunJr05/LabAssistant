@@ -39,6 +39,11 @@ class MyApp extends StatelessWidget {
           visualDensity: VisualDensity.adaptivePlatformDensity,
         ),
         home: const AuthWrapper(),
+        routes: {
+          '/role-selection': (context) => const RoleSelectionScreen(),
+          '/admin-dashboard': (context) => const AdminDashboard(),
+          '/student-dashboard': (context) => const StudentDashboard(),
+        },
         debugShowCheckedModeBanner: false,
       ),
     );

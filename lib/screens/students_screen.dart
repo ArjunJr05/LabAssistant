@@ -75,7 +75,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
   }
 
   Future<void> _loadSubjects() async {
-    setState(() => isLoading = true);
+    if (mounted) {
+      setState(() => isLoading = true);
+    }
     
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
@@ -89,11 +91,15 @@ class _StudentDashboardState extends State<StudentDashboard> {
       }
     }
     
-    setState(() => isLoading = false);
+    if (mounted) {
+      setState(() => isLoading = false);
+    }
   }
 
   Future<void> _loadExercises(int subjectId) async {
-    setState(() => isLoading = true);
+    if (mounted) {
+      setState(() => isLoading = true);
+    }
     
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
@@ -107,7 +113,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
       }
     }
     
-    setState(() => isLoading = false);
+    if (mounted) {
+      setState(() => isLoading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   @override

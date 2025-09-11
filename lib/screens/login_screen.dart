@@ -868,21 +868,27 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       } else if (widget.isAdminMode) {
         // Admin login successful - check server and navigate
         _showSuccess('Admin login successful!');
+        Future.delayed(const Duration(seconds: 2), () {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => AdminDashboard()),
+    );
+  });
         await _navigateToAdminDashboard(authService);
       } else if (_isLogin) {
-        // Student login successful - navigate to student dashboard
+        // Student login successful - let AuthWrapper handle navigation
         _showSuccess('Student login successful!');
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const StudentDashboard()),
-        );
+        Future.delayed(const Duration(seconds: 2), () {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => StudentDashboard()),
+    );
+  });
+        // AuthWrapper will automatically navigate based on authentication state
       } else {
-        // Student registration successful - navigate to student dashboard
+        // Student registration successful - let AuthWrapper handle navigation
         _showSuccess('Registration successful! Welcome!');
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const StudentDashboard()),
-        );
+        // AuthWrapper will automatically navigate based on authentication state
       }
     }
   }

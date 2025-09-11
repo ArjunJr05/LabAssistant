@@ -355,41 +355,89 @@ class AuthService extends ChangeNotifier {
 
   Future<void> logout() async {
     try {
+      print('\n🚪 LOGOUT PROCESS STARTED');
+      print('👤 User: ${_user?.name} (${_user?.role})');
+      
       // Check if current user is admin before logout
       final wasAdmin = _user?.role == 'admin';
+      final wasStudent = _user?.role == 'student';
       
       if (wasAdmin) {
+        print('🔑 Admin logout - Shutting down server...');
+        
         // Notify all students about server shutdown
-        await http.post(
-          Uri.parse('${await ConfigService.getApiBaseUrl()}/api/admin/shutdown-notification'),
-          headers: authHeaders,
-        );
+        try {
+          final response = await http.post(
+            Uri.parse('${await ConfigService.getApiBaseUrl()}/api/admin/shutdown-notification'),
+            headers: authHeaders,
+          );
+          print('📡 Shutdown notification sent: ${response.statusCode}');
+        } catch (e) {
+          print('❌ Failed to send shutdown notification: $e');
+        }
         
         // Stop the server
         await _serverManager.stopServer();
-      } else {
+        print('🛑 Server stopped');
+        
+      } else if (wasStudent) {
+        print('👨‍🎓 Student logout - Updating online status...');
+        
         // For students, call logout endpoint to set offline status
-        await http.post(
-          Uri.parse('${await ConfigService.getApiBaseUrl()}/api/auth/logout'),
-          headers: authHeaders,
-        );
+        try {
+          final apiUrl = await ConfigService.getApiBaseUrl();
+          print('🌐 Calling logout API: $apiUrl/auth/logout');
+          
+          final response = await http.post(
+            Uri.parse('$apiUrl/auth/logout'),
+            headers: authHeaders,
+            body: json.encode({
+              'enrollNumber': _user?.enrollNumber,
+              'timestamp': DateTime.now().toIso8601String(),
+            }),
+          );
+          
+          print('📡 Logout API response: ${response.statusCode}');
+          print('📡 Logout API body: ${response.body}');
+          
+          if (response.statusCode == 200) {
+            print('✅ Student marked offline in database');
+          } else {
+            print('❌ Failed to mark student offline: ${response.statusCode}');
+          }
+        } catch (e) {
+          print('❌ Error calling logout API: $e');
+          // Continue with logout even if API call fails
+        }
       }
       
+      // Clear local data
+      print('🧹 Clearing local storage...');
       _user = null;
       _token = null;
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('token');
       await prefs.remove('user');
+      
+      print('🔄 Notifying listeners...');
       notifyListeners();
-    } catch (e) {
-      print('Error during logout: $e');
+      
+      print('✅ LOGOUT COMPLETED SUCCESSFULLY\n');
+      
+    } catch (e, stackTrace) {
+      print('💥 ERROR DURING LOGOUT: $e');
+      print('📍 Stack trace: $stackTrace');
+      
       // Still clear local data even if server call fails
+      print('🧹 Force clearing local data...');
       _user = null;
       _token = null;
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('token');
       await prefs.remove('user');
       notifyListeners();
+      
+      print('🏁 Logout completed with errors\n');
     }
   }
   Future<void> _saveUserToStorage() async {

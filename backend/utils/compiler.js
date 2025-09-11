@@ -33,7 +33,7 @@ async function executeCode(code, testCases) {
       const alternativePaths = [
         'C:\\mingw64\\bin\\gcc.exe',
         'C:\\MinGW\\bin\\gcc.exe',
-        'C:\\msys64\\mingw64\\bin\\gcc.exe',
+        // 'C:\\msys64\\mingw64\\bin\\gcc.exe',
         // 'C:\\Program Files\\mingw64\\bin\\gcc.exe'
       ];
       

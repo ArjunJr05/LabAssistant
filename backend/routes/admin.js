@@ -321,4 +321,40 @@ router.get('/exercises/:exerciseId', auth, adminOnly, async (req, res) => {
   }
 });
 
+// Admin shutdown notification - notifies all students and disconnects them
+router.post('/shutdown-notification', auth, adminOnly, async (req, res) => {
+  try {
+    console.log('🛑 Admin shutdown notification received');
+    
+    // Mark all active sessions as inactive
+    await pool.query('UPDATE user_sessions SET is_active = false, session_end = CURRENT_TIMESTAMP WHERE is_active = true');
+    
+    // Get the Socket.IO instance from the main server
+    const io = req.app.get('socketio');
+    if (io) {
+      // Emit shutdown notification to all connected clients
+      io.emit('admin-shutdown', {
+        message: 'Admin has logged out. Server is shutting down.',
+        timestamp: new Date().toISOString()
+      });
+      
+      console.log('📡 Shutdown notification sent to all connected students');
+      
+      // Give clients a moment to receive the message before disconnecting
+      setTimeout(() => {
+        io.disconnectSockets();
+        console.log('🔌 All student connections terminated');
+      }, 2000);
+    }
+    
+    res.json({ 
+      message: 'Shutdown notification sent successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error sending shutdown notification:', error);
+    res.status(500).json({ message: 'Server error during shutdown notification' });
+  }
+});
+
 module.exports = router;

@@ -20,6 +20,9 @@ const io = socketIo(server, {
   }
 });
 
+// Make Socket.IO instance available to routes
+app.set('socketio', io);
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));

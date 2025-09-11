@@ -17,13 +17,20 @@ class AdminDashboard extends StatefulWidget {
 class _AdminDashboardState extends State<AdminDashboard> {
   int currentIndex = 0;
   List<User> onlineUsers = [];
-  Map<String, dynamic> analytics = {};
+  Map<String, dynamic> analytics = {
+    'totalExercises': 0,
+    'totalSubjects': 0,
+    'totalStudents': 0,
+    'totalSubmissions': 0
+  };
 
   @override
   void initState() {
     super.initState();
     _initializeSocket();
     _loadAnalytics();
+    // Fetch online users immediately
+    _fetchOnlineUsers();
   }
 
   void _initializeSocket() {
@@ -63,17 +70,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
       print('🔌 Socket connected, requesting online users');
       socketService.socket?.emit('get-online-users');
     });
-    
-    // Fetch online users immediately
-    _fetchOnlineUsers();
   }
 
   Future<void> _loadAnalytics() async {
     try {
-      // Load analytics data
-      // This would be implemented in your API
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final apiService = ApiService(authService);
+      final data = await apiService.getAdminAnalytics();
+      setState(() {
+        analytics = data;
+      });
+      print('✅ Loaded analytics: $data');
     } catch (e) {
-      print('Error loading analytics: $e');
+      print('❌ Error loading analytics: $e');
     }
   }
   
@@ -169,7 +178,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               const SizedBox(width: 16),
               _buildStatCard(
                 'Total Exercises',
-                '12', // This would come from API
+                analytics['totalExercises']?.toString() ?? '0',
                 Icons.assignment,
                 Colors.blue,
               ),

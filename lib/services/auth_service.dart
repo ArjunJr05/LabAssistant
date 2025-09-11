@@ -274,13 +274,105 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  Future<bool> registerAdmin({
+    required String name,
+    required String username,
+    required String password,
+    required String masterPassword,
+  }) async {
+    try {
+      print('\n🚀 ADMIN REGISTRATION ATTEMPT STARTED');
+      print('👤 Admin Name: $name');
+      print('🆔 Admin Username: $username');
+      print('🔐 Master Password Check: ${masterPassword == 'Admin_aids@smvec'}');
+      
+      _isLoading = true;
+      notifyListeners();
+
+      // Validate master password on client side first
+      if (masterPassword != 'Admin_aids@smvec') {
+        print('❌ Invalid master password provided');
+        return false;
+      }
+
+      // Debug network configuration for admin registration
+      await NetworkHelper.debugNetworkConfig();
+      
+      final apiUrl = await ConfigService.getApiBaseUrl();
+      print('🌐 Making admin registration API call to: $apiUrl/auth/register-admin');
+      
+      final response = await http.post(
+        Uri.parse('$apiUrl/auth/register-admin'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'name': name,
+          'username': username,
+          'password': password,
+          'masterPassword': masterPassword,
+        }),
+      );
+
+      print('📡 Admin Registration Response Status: ${response.statusCode}');
+      print('📡 Admin Registration Response Body: ${response.body}');
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print('✅ Admin registration API call successful');
+        print('🎫 Token received: ${data['token'] != null}');
+        print('👤 Admin data: ${data['user']}');
+        
+        _token = data['token'];
+        _user = User.fromJson(data['user']);
+        
+        print('✅ Admin user object created: ${_user?.name}');
+        print('🏷️ Admin role: ${_user?.role}');
+        print('🆔 Admin username: ${_user?.enrollNumber}');
+        
+        await _saveUserToStorage();
+        print('🎉 ADMIN REGISTRATION SUCCESSFUL');
+        return true;
+      } else {
+        print('❌ Admin registration API call failed');
+        try {
+          final errorData = json.decode(response.body);
+          print('💥 Error message: ${errorData['message'] ?? errorData['error'] ?? 'Unknown error'}');
+        } catch (e) {
+          print('💥 Error response: ${response.body}');
+        }
+        return false;
+      }
+    } catch (e, stackTrace) {
+      print('💥 ADMIN REGISTRATION ERROR: $e');
+      print('📍 Stack trace: $stackTrace');
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+      print('🏁 Admin registration attempt finished\n');
+    }
+  }
+
   Future<void> logout() async {
     print('🚪 LOGOUT initiated');
     
-    // If admin is logging out, stop the server
-    final wasAdmin = _user?.role == 'admin' && _user?.enrollNumber == 'ADMIN001';
+    // If admin is logging out, stop the server and disconnect all students
+    final wasAdmin = _user?.role == 'admin';
     if (wasAdmin) {
-      print('🛑 Admin logout detected - Stopping server...');
+      print('🛑 Admin logout detected - Stopping server and disconnecting students...');
+      
+      try {
+        // First, notify all connected students about server shutdown
+        final apiUrl = await ConfigService.getApiBaseUrl();
+        await http.post(
+          Uri.parse('$apiUrl/admin/shutdown-notification'),
+          headers: authHeaders,
+        ).timeout(const Duration(seconds: 3));
+        print('📡 Shutdown notification sent to students');
+      } catch (e) {
+        print('⚠️ Could not notify students: $e');
+      }
+      
+      // Stop the server
       await _serverManager.stopServer();
       print('✅ Server stopped for Admin logout');
     }

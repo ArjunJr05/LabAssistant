@@ -186,6 +186,57 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// Admin Registration
+router.post('/register-admin', async (req, res) => {
+  try {
+    const { name, username, password, masterPassword } = req.body;
+    
+    // Validate required fields
+    if (!name || !username || !password || !masterPassword) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+    
+    // Validate master password
+    if (masterPassword !== 'Admin_aids@smvec') {
+      return res.status(400).json({ message: 'Invalid master password' });
+    }
+    
+    // Check if admin username already exists
+    const adminExists = await pool.query(
+      'SELECT * FROM users WHERE enroll_number = $1',
+      [username]
+    );
+
+    if (adminExists.rows.length > 0) {
+      return res.status(400).json({ message: 'Admin username already exists' });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insert admin user
+    const result = await pool.query(
+      'INSERT INTO users (name, enroll_number, year, section, batch, password, role) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, enroll_number, role, year, section, batch',
+      [name, username, 'ADMIN', 'ADM', '2024', hashedPassword, 'admin']
+    );
+
+    const token = jwt.sign(
+      { userId: result.rows[0].id, role: result.rows[0].role },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.status(201).json({
+      message: 'Admin registered successfully',
+      token,
+      user: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Admin registration error:', error);
+    res.status(500).json({ message: 'Server error during admin registration' });
+  }
+});
+
 // Logout
 router.post('/logout', async (req, res) => {
   try {

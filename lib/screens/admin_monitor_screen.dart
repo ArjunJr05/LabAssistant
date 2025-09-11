@@ -41,6 +41,9 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Filter only students (exclude admins from online users)
+    final onlineStudents = widget.onlineUsers.where((user) => user.role == 'student').toList();
+    
     return Row(
       children: [
         // Student list
@@ -51,50 +54,95 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
-                  padding: EdgeInsets.all(16),
+                Padding(
+                  padding: const EdgeInsets.all(16),
                   child: Text(
-                    'Online Students',
-                    style: TextStyle(
+                    'Online Students (${onlineStudents.length})',
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
                 Expanded(
-                  child: ListView.builder(
-                    itemCount: widget.onlineUsers.length,
-                    itemBuilder: (context, index) {
-                      final user = widget.onlineUsers[index];
-                      final isActive = studentActivity.containsKey(user.enrollNumber);
-                      
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isActive ? Colors.green : Colors.grey,
-                          child: Text(user.name[0].toUpperCase()),
+                  child: onlineStudents.isEmpty
+                      ? const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.people_outline,
+                                size: 64,
+                                color: Colors.grey,
+                              ),
+                              SizedBox(height: 16),
+                              Text(
+                                'No students online',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.grey,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                'Students will appear here when they log in',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: onlineStudents.length,
+                          itemBuilder: (context, index) {
+                            final user = onlineStudents[index];
+                            final isActive = studentActivity.containsKey(user.enrollNumber);
+                            final lastActivity = studentActivity[user.enrollNumber];
+                            
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: isActive ? Colors.green : Colors.blue,
+                                child: Text(user.name[0].toUpperCase()),
+                              ),
+                              title: Text(user.name),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${user.enrollNumber} - ${user.batch}${user.section}'),
+                                  if (lastActivity != null)
+                                    Text(
+                                      'Last activity: ${_formatTime(lastActivity['timestamp'])}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.green,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              trailing: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.circle,
+                                    color: Colors.green,
+                                    size: 12,
+                                  ),
+                                  const Text('Online', style: TextStyle(fontSize: 10)),
+                                ],
+                              ),
+                              selected: selectedUser?.id == user.id,
+                              onTap: () {
+                                setState(() {
+                                  selectedUser = user;
+                                });
+                              },
+                            );
+                          },
                         ),
-                        title: Text(user.name),
-                        subtitle: Text('${user.enrollNumber} - ${user.batch}${user.section}'),
-                        trailing: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.circle,
-                              color: Colors.green,
-                              size: 12,
-                            ),
-                            const Text('Online', style: TextStyle(fontSize: 10)),
-                          ],
-                        ),
-                        selected: selectedUser?.id == user.id,
-                        onTap: () {
-                          setState(() {
-                            selectedUser = user;
-                          });
-                        },
-                      );
-                    },
-                  ),
                 ),
               ],
             ),
@@ -104,14 +152,58 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> {
         // Student monitor panel
         Expanded(
           flex: 2,
-          child: selectedUser == null
+          child: onlineStudents.isEmpty
               ? const Center(
-                  child: Text(
-                    'Select a student to monitor',
-                    style: TextStyle(fontSize: 18),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.monitor_outlined,
+                        size: 80,
+                        color: Colors.grey,
+                      ),
+                      SizedBox(height: 24),
+                      Text(
+                        'No students to monitor',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Students will appear here when they log in',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
                   ),
                 )
-              : _buildStudentMonitor(),
+              : selectedUser == null
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.touch_app,
+                            size: 64,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'Select a student to monitor',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _buildStudentMonitor(),
         ),
       ],
     );

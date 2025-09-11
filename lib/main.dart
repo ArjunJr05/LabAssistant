@@ -70,7 +70,7 @@ class AuthWrapper extends StatelessWidget {
 
         // If not authenticated, show login screen
         if (!authService.isAuthenticated) {
-          return const LoginScreen();
+          return const RoleSelectionScreen();
         }
 
         // Debug: Print user info
@@ -88,7 +88,7 @@ class AuthWrapper extends StatelessWidget {
             // Invalid admin user, logout
             print('Invalid admin user detected, logging out');
             authService.logout();
-            return const LoginScreen();
+            return const RoleSelectionScreen();
           }
         } else if (authService.user?.role == 'student') {
           print('Routing to StudentDashboard');
@@ -97,7 +97,7 @@ class AuthWrapper extends StatelessWidget {
           // Unknown role, logout for security
           print('Unknown user role: ${authService.user?.role}, logging out');
           authService.logout();
-          return const LoginScreen();
+          return const RoleSelectionScreen();
         }
       },
     );

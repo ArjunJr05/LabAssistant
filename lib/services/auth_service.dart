@@ -187,6 +187,11 @@ class AuthService extends ChangeNotifier {
     required String password,
   }) async {
     try {
+      print('\n🚀 REGISTRATION ATTEMPT STARTED');
+      print('👤 Name: $name');
+      print('🆔 Enrollment Number: $enrollNumber');
+      print('📅 Year: $year, Section: $section, Batch: $batch');
+      
       _isLoading = true;
       notifyListeners();
 
@@ -196,7 +201,12 @@ class AuthService extends ChangeNotifier {
         return false;
       }
 
+      // Debug network configuration for registration
+      await NetworkHelper.debugNetworkConfig();
+      
       final apiUrl = await ConfigService.getApiBaseUrl();
+      print('🌐 Making registration API call to: $apiUrl/auth/register');
+      
       final response = await http.post(
         Uri.parse('$apiUrl/auth/register'),
         headers: {'Content-Type': 'application/json'},
@@ -210,21 +220,43 @@ class AuthService extends ChangeNotifier {
         }),
       );
 
-      final data = json.decode(response.body);
+      print('📡 Registration Response Status: ${response.statusCode}');
+      print('📡 Registration Response Body: ${response.body}');
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print('✅ Registration API call successful');
+        print('🎫 Token received: ${data['token'] != null}');
+        print('👤 User data: ${data['user']}');
+        
         _token = data['token'];
         _user = User.fromJson(data['user']);
+        
+        print('✅ User object created: ${_user?.name}');
+        print('🏷️ User role: ${_user?.role}');
+        print('🆔 User enroll number: ${_user?.enrollNumber}');
+        
         await _saveUserToStorage();
+        print('🎉 REGISTRATION SUCCESSFUL');
         return true;
+      } else {
+        print('❌ Registration API call failed');
+        try {
+          final errorData = json.decode(response.body);
+          print('💥 Error message: ${errorData['message'] ?? errorData['error'] ?? 'Unknown error'}');
+        } catch (e) {
+          print('💥 Error response: ${response.body}');
+        }
+        return false;
       }
-      return false;
-    } catch (e) {
-      print('Registration error: $e');
+    } catch (e, stackTrace) {
+      print('💥 REGISTRATION ERROR: $e');
+      print('📍 Stack trace: $stackTrace');
       return false;
     } finally {
       _isLoading = false;
       notifyListeners();
+      print('🏁 Registration attempt finished\n');
     }
   }
 

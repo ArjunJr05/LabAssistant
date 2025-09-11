@@ -291,39 +291,82 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleSubmit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      print('❌ Form validation failed');
+      return;
+    }
 
     final authService = Provider.of<AuthService>(context, listen: false);
     bool success;
 
     if (_isLogin || _isAdminMode) {
+      print('🔑 Attempting login...');
       success = await authService.login(
-        _enrollController.text,
+        _enrollController.text.trim(),
         _passwordController.text,
       );
     } else {
+      print('📝 Attempting registration...');
+      
+      // Validate registration fields
+      if (_nameController.text.trim().isEmpty) {
+        _showError('Name is required for registration');
+        return;
+      }
+      
       success = await authService.register(
-        name: _nameController.text,
-        enrollNumber: _enrollController.text,
-        year: _yearController.text,
-        section: _sectionController.text,
-        batch: _batchController.text,
+        name: _nameController.text.trim(),
+        enrollNumber: _enrollController.text.trim(),
+        year: _yearController.text.trim(),
+        section: _sectionController.text.trim().toUpperCase(),
+        batch: _batchController.text.trim(),
         password: _passwordController.text,
       );
     }
 
     if (!success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isAdminMode 
-                ? 'Admin login failed' 
-                : (_isLogin ? 'Login failed' : 'Registration failed')
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
+      String errorMessage;
+      if (_isAdminMode) {
+        errorMessage = 'Admin login failed. Check credentials and server status.';
+      } else if (_isLogin) {
+        errorMessage = 'Student login failed. Make sure admin is logged in first.';
+      } else {
+        errorMessage = 'Registration failed. Check your details and try again.';
+      }
+      
+      _showError(errorMessage);
+    } else if (success && mounted) {
+      String successMessage;
+      if (_isAdminMode) {
+        successMessage = 'Admin login successful!';
+      } else if (_isLogin) {
+        successMessage = 'Student login successful!';
+      } else {
+        successMessage = 'Registration successful! Welcome!';
+      }
+      
+      _showSuccess(successMessage);
     }
+  }
+  
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+  
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override

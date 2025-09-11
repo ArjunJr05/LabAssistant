@@ -122,7 +122,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Center(
               child: Text(
-                'Welcome, ${authService.user?.name}',
+                'Welcome, ${authService.user?.name ?? 'Student'}',
                 style: const TextStyle(fontSize: 16),
               ),
             ),

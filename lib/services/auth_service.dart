@@ -125,6 +125,7 @@ class AuthService extends ChangeNotifier {
         print('✅ Login API call successful');
         print('🎫 Token received: ${data['token'] != null}');
         print('👤 User data: ${data['user']}');
+        print('📊 Raw user data from API: ${data['user']}');
         
         _token = data['token'];
         _user = User.fromJson(data['user']);

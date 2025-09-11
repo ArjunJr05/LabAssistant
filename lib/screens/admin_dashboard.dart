@@ -119,7 +119,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => authService.logout(),
+            onPressed: () async {
+              await authService.logout();
+              if (mounted) {
+                Navigator.of(context).pushReplacementNamed('/role-selection');
+              }
+            },
           ),
         ],
       ),

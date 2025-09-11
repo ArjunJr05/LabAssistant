@@ -128,7 +128,8 @@ router.post('/login', async (req, res) => {
           role: user.role,
           year: user.year,
           section: user.section,
-          batch: user.batch
+          batch: user.batch,
+          isOnline: true
         }
       });
     }
@@ -178,7 +179,8 @@ router.post('/login', async (req, res) => {
         role: user.role,
         year: user.year,
         section: user.section,
-        batch: user.batch
+        batch: user.batch,
+        isOnline: true
       }
     });
   } catch (error) {

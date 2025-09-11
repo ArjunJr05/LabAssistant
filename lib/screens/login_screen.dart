@@ -1,7 +1,6 @@
 // lib/screens/role_selection_screen.dart
 import 'package:flutter/material.dart';
 import 'package:labassistant/screens/admin_dashboard.dart';
-import 'package:labassistant/screens/server_config_screen.dart';
 import 'package:labassistant/screens/students_screen.dart';
 import 'package:labassistant/services/auth_service.dart';
 import 'package:provider/provider.dart';
@@ -286,7 +285,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
   }
 
   void _navigateToLogin(bool isAdmin) {
-    Navigator.pushReplacement(
+    Navigator.push(
       context,
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => LoginScreen(isAdminMode: isAdmin),
@@ -315,7 +314,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
     super.dispose();
   }
 }
-
 
 class LoginScreen extends StatefulWidget {
   final bool isAdminMode;
@@ -390,10 +388,33 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                   child: Row(
                     children: [
                       IconButton(
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () {
+                          // Explicitly navigate back to RoleSelectionScreen
+                          Navigator.pushReplacement(
+                            context,
+                            PageRouteBuilder(
+                              pageBuilder: (context, animation, secondaryAnimation) => 
+                                  const RoleSelectionScreen(),
+                              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                const begin = Offset(-1.0, 0.0);
+                                const end = Offset.zero;
+                                const curve = Curves.ease;
+
+                                var tween = Tween(begin: begin, end: end).chain(
+                                  CurveTween(curve: curve),
+                                );
+
+                                return SlideTransition(
+                                  position: tween.animate(animation),
+                                  child: child,
+                                );
+                              },
+                              transitionDuration: const Duration(milliseconds: 300),
+                            ),
+                          );
+                        },
                         icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
                       ),
-                      
                     ],
                   ),
                 ),
@@ -471,58 +492,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                         textAlign: TextAlign.center,
                                       ),
                                       const SizedBox(height: 32),
-                                      
-                                      // Admin credentials hint
-                                      if (widget.isAdminMode)
-                                        Container(
-                                          padding: const EdgeInsets.all(16),
-                                          margin: const EdgeInsets.only(bottom: 24),
-                                          decoration: BoxDecoration(
-                                            color: Colors.red.withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(12),
-                                            border: Border.all(color: Colors.red.withOpacity(0.3)),
-                                          ),
-                                          child: Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      'Admin Credentials:',
-                                                      style: TextStyle(
-                                                        fontWeight: FontWeight.bold,
-                                                        color: Colors.white,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      'Username: ADMIN001',
-                                                      style: TextStyle(color: Colors.white.withOpacity(0.9)),
-                                                    ),
-                                                    Text(
-                                                      'Password: Admin_aids@smvec',
-                                                      style: TextStyle(color: Colors.white.withOpacity(0.9)),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              IconButton(
-                                                onPressed: () {
-                                                  Navigator.push(
-                                                    context,
-                                                    MaterialPageRoute(
-                                                      builder: (context) => const ServerConfigScreen(),
-                                                    ),
-                                                  );
-                                                },
-                                                icon: const Icon(Icons.settings, color: Colors.white),
-                                                tooltip: 'Server Configuration',
-                                              ),
-                                            ],
-                                          ),
-                                        ),
                                       
                                       // Login/Register toggle
                                       Container(
@@ -817,13 +786,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     bool success;
 
     if (_isLogin) {
-      // Login for both admin and student
       success = await authService.login(
         _enrollController.text.trim(),
         _passwordController.text,
       );
     } else if (widget.isAdminMode) {
-      // Admin registration
       success = await authService.registerAdmin(
         name: _adminNameController.text.trim(),
         username: _enrollController.text.trim(),
@@ -831,12 +798,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         masterPassword: _masterPasswordController.text,
       );
     } else {
-      // Student registration
-      if (_nameController.text.trim().isEmpty) {
-        _showError('Name is required for registration');
-        return;
-      }
-      
       success = await authService.register(
         name: _nameController.text.trim(),
         enrollNumber: _enrollController.text.trim(),
@@ -860,35 +821,27 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       }
       _showError(errorMessage);
     } else if (success && mounted) {
-      // Handle successful authentication with proper navigation
-      if (widget.isAdminMode && !_isLogin) {
-        // Admin registration successful - check server and navigate
-        _showSuccess('Admin registration successful!');
-        await _navigateToAdminDashboard(authService);
-      } else if (widget.isAdminMode) {
-        // Admin login successful - check server and navigate
+      // Handle successful authentication
+      if (widget.isAdminMode) {
         _showSuccess('Admin login successful!');
         Future.delayed(const Duration(seconds: 2), () {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => AdminDashboard()),
-    );
-  });
-        await _navigateToAdminDashboard(authService);
-      } else if (_isLogin) {
-        // Student login successful - let AuthWrapper handle navigation
-        _showSuccess('Student login successful!');
-        Future.delayed(const Duration(seconds: 2), () {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => StudentDashboard()),
-    );
-  });
-        // AuthWrapper will automatically navigate based on authentication state
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const AdminDashboard()),
+            );
+          }
+        });
       } else {
-        // Student registration successful - let AuthWrapper handle navigation
-        _showSuccess('Registration successful! Welcome!');
-        // AuthWrapper will automatically navigate based on authentication state
+        _showSuccess(_isLogin ? 'Student login successful!' : 'Registration successful!');
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const StudentDashboard()),
+            );
+          }
+        });
       }
     }
   }
@@ -909,23 +862,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         duration: const Duration(seconds: 4),
       ),
     );
-  }
-  
-  Future<void> _navigateToAdminDashboard(AuthService authService) async {
-    // Wait a moment for the success message to show
-    await Future.delayed(const Duration(milliseconds: 1500));
-    
-    // Check if server is running before navigating
-    final serverRunning = await authService.serverManager.checkServerStatus();
-    
-    if (serverRunning && mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const AdminDashboard()),
-      );
-    } else if (mounted) {
-      _showError('Server failed to start. Please try logging in again.');
-    }
   }
 
   void _showSuccess(String message) {

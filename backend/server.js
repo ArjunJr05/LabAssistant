@@ -33,13 +33,36 @@ app.use(express.urlencoded({ extended: true }));
 const tempDir = path.join(__dirname, 'temp');
 fs.ensureDirSync(tempDir);
 
-// Routes
+// Routes with /api prefix to match Flutter app expectations
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/student', studentRoutes);
+app.use('/api/exercises', exerciseRoutes);
+
+// Health check endpoint with /api prefix
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    message: 'Lab Monitoring Server is running',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Server status endpoint for student login validation with /api prefix
+app.get('/api/status', (req, res) => {
+  res.json({ 
+    server: 'online',
+    timestamp: new Date().toISOString(),
+    message: 'Admin server is running'
+  });
+});
+
+// Legacy routes without /api prefix for backward compatibility
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
 app.use('/student', studentRoutes);
 app.use('/exercises', exerciseRoutes);
 
-// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
@@ -48,7 +71,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Server status endpoint for student login validation
 app.get('/status', (req, res) => {
   res.json({ 
     server: 'online',
@@ -635,6 +657,13 @@ app.use('*', (req, res) => {
   res.status(404).json({ 
     message: 'Route not found',
     availableRoutes: [
+      '/api/health',
+      '/api/auth/login',
+      '/api/auth/register',
+      '/api/exercises/subjects',
+      '/api/admin/*',
+      '/api/student/*',
+      // Legacy routes
       '/health',
       '/auth/login',
       '/auth/register',
@@ -666,10 +695,11 @@ const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, '0.0.0.0', async () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Admin Panel: http://0.0.0.0:${PORT}/health`);
+  console.log(`📊 Admin Panel: http://0.0.0.0:${PORT}/api/health`);
   console.log(`💻 Socket.IO enabled for real-time monitoring`);
   console.log(`🌐 Server accessible from any device on the network`);
   console.log(`🔴 Enhanced with admin logout and server shutdown handling`);
+  console.log(`🔗 API endpoints available with /api prefix`);
   
   await initDatabase();
   
@@ -677,6 +707,12 @@ server.listen(PORT, '0.0.0.0', async () => {
   console.log('\n📝 Default Admin Credentials:');
   console.log('   Username: ADMIN001');
   console.log('   Password: Admin_aids@smvec\n');
+  console.log('📍 Available API endpoints:');
+  console.log('   - /api/auth/login');
+  console.log('   - /api/auth/register');
+  console.log('   - /api/admin/*');
+  console.log('   - /api/student/*');
+  console.log('   - /api/exercises/*\n');
 });
 
 // Export for testing or external use

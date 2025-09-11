@@ -119,6 +119,11 @@ io.on('connection', (socket) => {
       });
     }
   });
+
+  // Handle request for online users
+  socket.on('get-online-users', () => {
+    socket.emit('online-users', Array.from(activeUsers.values()));
+  });
 });
 
 // Database initialization

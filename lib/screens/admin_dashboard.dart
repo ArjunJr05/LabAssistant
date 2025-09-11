@@ -30,18 +30,42 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final socketService = Provider.of<SocketService>(context, listen: false);
     socketService.connect();
     
-    socketService.socket?.on('user-status-update', (data) {
-      setState(() {
-        onlineUsers = (data as List)
-            .map((user) => User.fromJson(user))
-            .toList();
-      });
+    // Listen for user connections
+    socketService.socket?.on('user-connected', (data) {
+      print('🔗 User connected: $data');
+      _fetchOnlineUsers();
+    });
+    
+    // Listen for user disconnections
+    socketService.socket?.on('user-disconnected', (data) {
+      print('🔌 User disconnected: $data');
+      _fetchOnlineUsers();
+    });
+    
+    // Listen for online users list updates
+    socketService.socket?.on('online-users', (data) {
+      print('👥 Online users update: $data');
+      if (data is List) {
+        setState(() {
+          onlineUsers = data
+              .map((user) => User.fromJson(user))
+              .toList();
+        });
+      }
     });
 
     socketService.socket?.on('student-activity', (data) {
-      // Handle real-time student activity
-      print('Student activity: $data');
+      print('📚 Student activity: $data');
     });
+    
+    // Request current online users when socket connects
+    socketService.socket?.on('connect', (_) {
+      print('🔌 Socket connected, requesting online users');
+      socketService.socket?.emit('get-online-users');
+    });
+    
+    // Fetch online users immediately
+    _fetchOnlineUsers();
   }
 
   Future<void> _loadAnalytics() async {
@@ -50,6 +74,20 @@ class _AdminDashboardState extends State<AdminDashboard> {
       // This would be implemented in your API
     } catch (e) {
       print('Error loading analytics: $e');
+    }
+  }
+  
+  Future<void> _fetchOnlineUsers() async {
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final apiService = ApiService(authService);
+      final users = await apiService.getOnlineUsers();
+      setState(() {
+        onlineUsers = users;
+      });
+      print('✅ Fetched ${users.length} online users');
+    } catch (e) {
+      print('❌ Error fetching online users: $e');
     }
   }
 

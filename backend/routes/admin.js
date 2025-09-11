@@ -259,6 +259,39 @@ router.get('/exercises', auth, adminOnly, async (req, res) => {
   }
 });
 
+// Get online users for admin dashboard
+router.get('/online-users', auth, adminOnly, async (req, res) => {
+  try {
+    // Get currently active users from database
+    const result = await pool.query(`
+      SELECT u.id, u.name, u.enroll_number, u.year, u.section, u.batch, u.role,
+             us.session_start, us.is_active
+      FROM users u
+      LEFT JOIN user_sessions us ON u.id = us.user_id AND us.is_active = true
+      WHERE u.role = 'student' AND us.is_active = true
+      ORDER BY us.session_start DESC
+    `);
+    
+    const onlineUsers = result.rows.map(user => ({
+      id: user.id,
+      name: user.name,
+      enrollNumber: user.enroll_number,
+      year: user.year,
+      section: user.section,
+      batch: user.batch,
+      role: user.role,
+      sessionStart: user.session_start,
+      status: 'online'
+    }));
+    
+    console.log(`📊 Admin requested online users: ${onlineUsers.length} found`);
+    res.json(onlineUsers);
+  } catch (error) {
+    console.error('Error fetching online users:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Get specific exercise for admin (with both visible and hidden test cases)
 router.get('/exercises/:exerciseId', auth, adminOnly, async (req, res) => {
   try {

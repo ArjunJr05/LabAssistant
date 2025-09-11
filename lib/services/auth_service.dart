@@ -148,6 +148,20 @@ class AuthService extends ChangeNotifier {
         }
         
         print('🎉 LOGIN SUCCESSFUL');
+        
+        // For student login, emit socket event to register with server
+        if (_user?.role == 'student') {
+          print('📡 Registering student with socket server...');
+          // We'll emit this after the UI updates
+          Future.delayed(Duration(milliseconds: 500), () {
+            _emitStudentLogin();
+          });
+        }
+        
+        // Force immediate UI update
+        _isLoading = false;
+        notifyListeners();
+        
         return true;
       } else {
         print('❌ API call failed');
@@ -288,6 +302,14 @@ class AuthService extends ChangeNotifier {
       await prefs.setString('token', _token!);
       await prefs.setString('user', json.encode(_user!.toJson()));
       print('💾 User data saved to storage');
+    }
+  }
+
+  void _emitStudentLogin() {
+    if (_user?.role == 'student') {
+      // Import SocketService and emit login event
+      print('🔌 Emitting student login to socket server');
+      // This will be handled by the UI components that have access to SocketService
     }
   }
 

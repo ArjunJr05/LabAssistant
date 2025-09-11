@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:labassistant/models/excercise_model.dart';
 import '../models/subject_model.dart';
+import '../models/user_model.dart';
 import 'auth_service.dart';
 import 'config_service.dart';
 
@@ -37,6 +38,28 @@ class ApiService {
     } catch (e) {
       print('Error fetching debug info: $e');
       throw Exception('Error fetching debug info: $e');
+    }
+  }
+
+  // Get online users
+  Future<List<User>> getOnlineUsers() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/admin/online-users'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((user) => User.fromJson(user)).toList();
+      } else {
+        print('Failed to fetch online users: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching online users: $e');
+      return [];
     }
   }
 

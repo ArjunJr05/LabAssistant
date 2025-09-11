@@ -212,6 +212,19 @@ router.post('/:exerciseId/test', auth, async (req, res) => {
     const executionResult = await executeCode(code, visibleTestCases);
     
     if (!executionResult.compilationSuccess) {
+      // Save failed test run
+      try {
+        await pool.query(
+          `INSERT INTO student_activities (
+            user_id, exercise_id, activity_type, code, status, 
+            test_results, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+          [userId, exerciseId, 'test_run', code, 'compilation_error', JSON.stringify({ error: executionResult.compilationError })]
+        );
+      } catch (dbError) {
+        console.error('Error saving failed test run:', dbError);
+      }
+
       return res.json({
         compilationSuccess: false,
         compilationError: executionResult.compilationError,
@@ -223,6 +236,22 @@ router.post('/:exerciseId/test', auth, async (req, res) => {
     const passedTests = results.filter(r => r.passed).length;
 
     console.log(`Visible test results: ${passedTests}/${results.length} passed`);
+
+    // Save successful test run
+    try {
+      await pool.query(
+        `INSERT INTO student_activities (
+          user_id, exercise_id, activity_type, code, status, 
+          test_results, tests_passed, total_tests, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+        [
+          userId, exerciseId, 'test_run', code, 'completed',
+          JSON.stringify(results), passedTests, results.length
+        ]
+      );
+    } catch (dbError) {
+      console.error('Error saving test run:', dbError);
+    }
 
     res.json({
       compilationSuccess: true,
@@ -359,6 +388,23 @@ router.post('/:exerciseId/submit', auth, async (req, res) => {
         ]
       );
       console.log('Final submission saved successfully');
+
+      // Also save to student activities for detailed tracking
+      await pool.query(
+        `INSERT INTO student_activities (
+          user_id, exercise_id, activity_type, code, status, score,
+          test_results, tests_passed, total_tests, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+        [
+          userId, exerciseId, 'submission', code, 
+          allTestsPassed ? 'passed' : 'failed', score,
+          JSON.stringify({
+            visible: visibleResults,
+            hidden_passed: hiddenPassed,
+            hidden_total: hiddenTestCases.length
+          }), totalPassedTests, totalTests
+        ]
+      );
     } catch (dbError) {
       console.error('Error saving submission:', dbError);
     }

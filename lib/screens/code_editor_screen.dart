@@ -85,6 +85,7 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     _codeController.addListener(() {
       if (!_hasUnsavedChanges) setState(() => _hasUnsavedChanges = true);
     });
+    _checkForPreviousSubmission();
   }
 
   void _initializeCodeEditor() {
@@ -100,6 +101,38 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     _updateOutput('Problem: ${widget.exercise.title}\n');
     _updateOutput('Visible Test Cases: ${widget.exercise.testCases.length}\n');
     _updateOutput('${"=" * 50}\n');
+  }
+
+  Future<void> _checkForPreviousSubmission() async {
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final apiService = ApiService(authService);
+      
+      final lastSubmission = await apiService.getLastSubmission(widget.exercise.id);
+      
+      if (lastSubmission != null) {
+        setState(() {
+          _codeController.text = lastSubmission['code'] ?? '// Write your code here';
+          score = lastSubmission['score'];
+        });
+        
+        _updateOutput('\n🎉 PREVIOUSLY COMPLETED EXERCISE 🎉\n');
+        _updateOutput('Your submitted solution has been loaded.\n');
+        _updateOutput('Score: ${lastSubmission['score']}%\n');
+        _updateOutput('Submitted: ${lastSubmission['submitted_at']}\n');
+        _updateOutput('Status: PASSED ✅\n');
+        _updateOutput('${"=" * 50}\n');
+        _updateOutput('You can view your solution or make improvements.\n\n');
+        
+        // Set cursor to end of loaded code
+        _codeController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _codeController.text.length),
+        );
+      }
+    } catch (e) {
+      print('Error checking for previous submission: $e');
+      // Continue with normal initialization if there's an error
+    }
   }
 
   @override

@@ -68,6 +68,7 @@ class ConfigService {
   static List<String> getCommonLocalIPs() {
     return [
       '192.168.0.79',
+      '192.168.1.100',
       '192.168.1.101',
       '192.168.1.102',
       '192.168.0.100',
@@ -78,5 +79,13 @@ class ConfigService {
       '172.16.0.100',
       'localhost', // Keep as fallback for development
     ];
+  }
+  
+  /// Force reset to default IP (useful for troubleshooting)
+  static Future<void> resetToDefault() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_serverIpKey, _defaultServerIp);
+    await prefs.setInt(_serverPortKey, _defaultServerPort);
+    clearCache();
   }
 }

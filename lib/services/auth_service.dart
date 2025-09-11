@@ -7,6 +7,7 @@ import 'dart:convert';
 import '../models/user_model.dart';
 import 'server_manager.dart';
 import 'config_service.dart';
+import '../utils/network_helper.dart';
 
 class AuthService extends ChangeNotifier {
   User? _user;
@@ -62,9 +63,16 @@ class AuthService extends ChangeNotifier {
       // For Student login: Check if server is online first
       if (!isAdminLogin) {
         print('👨‍🎓 STUDENT LOGIN - Checking server status...');
+        
+        // Debug network configuration
+        await NetworkHelper.debugNetworkConfig();
+        
         final serverOnline = await _serverManager.checkServerStatus();
         if (!serverOnline) {
           print('❌ Server is offline - Student login blocked');
+          print('💡 Trying to reset network configuration...');
+          await NetworkHelper.resetNetworkConfig();
+          
           _isLoading = false;
           notifyListeners();
           throw Exception('Admin not logged in. Please wait for server.');

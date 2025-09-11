@@ -4,11 +4,16 @@ import 'package:labassistant/services/socket_services.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_window/desktop_window.dart';
 import 'services/auth_service.dart';
+import 'services/config_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/admin_dashboard.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Force reset network configuration on app start
+  await ConfigService.resetToDefault();
+  print(' Network configuration reset to default IP');
   
   // Set window properties for desktop
   await DesktopWindow.setMinWindowSize(const Size(1200, 800));

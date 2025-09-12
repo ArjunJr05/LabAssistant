@@ -201,8 +201,34 @@ router.delete('/exercises/:exerciseId', auth, adminOnly, async (req, res) => {
     }
 
     const exercise = exerciseCheck.rows[0];
-    const visibleCount = JSON.parse(exercise.test_cases || '[]').length;
-    const hiddenCount = JSON.parse(exercise.hidden_test_cases || '[]').length;
+    
+    // Safely parse test cases with error handling
+    let visibleCount = 0;
+    let hiddenCount = 0;
+    
+    try {
+      const testCases = exercise.test_cases;
+      if (typeof testCases === 'string') {
+        visibleCount = JSON.parse(testCases).length;
+      } else if (Array.isArray(testCases)) {
+        visibleCount = testCases.length;
+      }
+    } catch (e) {
+      console.log('Error parsing visible test cases:', e.message);
+      visibleCount = 0;
+    }
+    
+    try {
+      const hiddenTestCases = exercise.hidden_test_cases;
+      if (typeof hiddenTestCases === 'string') {
+        hiddenCount = JSON.parse(hiddenTestCases).length;
+      } else if (Array.isArray(hiddenTestCases)) {
+        hiddenCount = hiddenTestCases.length;
+      }
+    } catch (e) {
+      console.log('Error parsing hidden test cases:', e.message);
+      hiddenCount = 0;
+    }
     
     console.log(`Found exercise: "${exercise.title}" (ID: ${exerciseId})`);
     console.log(`- Visible test cases: ${visibleCount}`);
@@ -249,15 +275,37 @@ router.get('/exercises', auth, adminOnly, async (req, res) => {
     
     // Add test case counts to each exercise for admin overview
     const exercisesWithCounts = result.rows.map(exercise => {
-      const visibleTestCases = JSON.parse(exercise.test_cases || '[]');
-      const hiddenTestCases = JSON.parse(exercise.hidden_test_cases || '[]');
+      let visibleCount = 0;
+      let hiddenCount = 0;
+      
+      try {
+        const testCases = exercise.test_cases;
+        if (typeof testCases === 'string') {
+          visibleCount = JSON.parse(testCases).length;
+        } else if (Array.isArray(testCases)) {
+          visibleCount = testCases.length;
+        }
+      } catch (e) {
+        console.log('Error parsing visible test cases for exercise', exercise.id, ':', e.message);
+      }
+      
+      try {
+        const hiddenTestCases = exercise.hidden_test_cases;
+        if (typeof hiddenTestCases === 'string') {
+          hiddenCount = JSON.parse(hiddenTestCases).length;
+        } else if (Array.isArray(hiddenTestCases)) {
+          hiddenCount = hiddenTestCases.length;
+        }
+      } catch (e) {
+        console.log('Error parsing hidden test cases for exercise', exercise.id, ':', e.message);
+      }
       
       return {
         ...exercise,
         testCaseSummary: {
-          visible: visibleTestCases.length,
-          hidden: hiddenTestCases.length,
-          total: visibleTestCases.length + hiddenTestCases.length
+          visible: visibleCount,
+          hidden: hiddenCount,
+          total: visibleCount + hiddenCount
         }
       };
     });
@@ -372,15 +420,38 @@ router.get('/exercises/:exerciseId', auth, adminOnly, async (req, res) => {
     }
     
     const exercise = result.rows[0];
-    const visibleTestCases = JSON.parse(exercise.test_cases || '[]');
-    const hiddenTestCases = JSON.parse(exercise.hidden_test_cases || '[]');
+    
+    let visibleCount = 0;
+    let hiddenCount = 0;
+    
+    try {
+      const testCases = exercise.test_cases;
+      if (typeof testCases === 'string') {
+        visibleCount = JSON.parse(testCases).length;
+      } else if (Array.isArray(testCases)) {
+        visibleCount = testCases.length;
+      }
+    } catch (e) {
+      console.log('Error parsing visible test cases for exercise', exercise.id, ':', e.message);
+    }
+    
+    try {
+      const hiddenTestCases = exercise.hidden_test_cases;
+      if (typeof hiddenTestCases === 'string') {
+        hiddenCount = JSON.parse(hiddenTestCases).length;
+      } else if (Array.isArray(hiddenTestCases)) {
+        hiddenCount = hiddenTestCases.length;
+      }
+    } catch (e) {
+      console.log('Error parsing hidden test cases for exercise', exercise.id, ':', e.message);
+    }
     
     res.json({
       ...exercise,
       testCaseSummary: {
-        visible: visibleTestCases.length,
-        hidden: hiddenTestCases.length,
-        total: visibleTestCases.length + hiddenTestCases.length
+        visible: visibleCount,
+        hidden: hiddenCount,
+        total: visibleCount + hiddenCount
       }
     });
   } catch (error) {

@@ -8,7 +8,7 @@ const { promisify } = require('util');
 const execAsync = promisify(exec);
 
 // Path to MinGW GCC compiler
-const MINGW_PATH = 'C:\\mingw64\\bin\\gcc.exe';
+const MINGW_PATH = 'C:\\MinGW\\bin\\gcc.exe';
 
 async function executeCode(code, testCases) {
   const tempDir = os.tmpdir();

@@ -30,10 +30,9 @@ class ServerManager extends ChangeNotifier {
       
       print('🚀 Starting Node.js server...');
       
-      // Get the backend directory path
       final backendPath = Platform.isWindows 
-          ? r'C:\Users\arjun\labassistant\backend'
-          : '/Users/arjun/labassistant/backend';
+          ? r'C:\Users\user\labassistant\backend'
+          : '/Users/user/labassistant/backend';
       
       // Check if backend directory exists
       final backendDir = Directory(backendPath);
@@ -168,8 +167,8 @@ class ServerManager extends ChangeNotifier {
       // Try multiple approaches on Windows
       final approaches = [
         // Approach 1: Use cmd.exe
-        () => Process.start('cmd', ['/c', 'npm', 'start'], 
-            workingDirectory: backendPath, mode: ProcessStartMode.detached),
+      () => Process.start('cmd', ['/c', 'npm', 'start'], 
+        workingDirectory: backendPath, mode: ProcessStartMode.normal),
         
         // Approach 2: Use PowerShell
         () => Process.start('powershell', ['-Command', 'npm start'], 

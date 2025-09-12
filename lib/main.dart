@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:labassistant/screens/students_screen.dart';
 import 'package:labassistant/services/socket_services.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_window/desktop_window.dart';
@@ -7,6 +6,7 @@ import 'services/auth_service.dart';
 import 'services/config_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/admin_dashboard.dart';
+import 'screens/students_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -73,7 +73,7 @@ class AuthWrapper extends StatelessWidget {
           );
         }
 
-        // If not authenticated, show login screen
+        // If not authenticated, show role selection screen
         if (!authService.isAuthenticated) {
           return const RoleSelectionScreen();
         }
@@ -105,6 +105,71 @@ class AuthWrapper extends StatelessWidget {
           return const RoleSelectionScreen();
         }
       },
+    );
+  }
+}
+
+// Role Selection Screen
+class RoleSelectionScreen extends StatelessWidget {
+  const RoleSelectionScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Select Role'),
+        backgroundColor: Colors.blue[800],
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Lab Assistant',
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 40),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const LoginScreen(isAdminMode: false),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+              ),
+              child: const Text(
+                'Student Login',
+                style: TextStyle(fontSize: 18, color: Colors.white),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const LoginScreen(isAdminMode: true),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+              ),
+              child: const Text(
+                'Admin Login',
+                style: TextStyle(fontSize: 18, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

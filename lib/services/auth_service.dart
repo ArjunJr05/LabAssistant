@@ -131,7 +131,7 @@ class AuthService extends ChangeNotifier {
         _user = User.fromJson(data['user']);
         
         print('✅ User object created: ${_user?.name}');
-        print('🏷️ User role: ${_user?.role}');
+        print('🏷 User role: ${_user?.role}');
         print('🆔 User enroll number: ${_user?.enrollNumber}');
         
         await _saveUserToStorage();
@@ -248,7 +248,7 @@ class AuthService extends ChangeNotifier {
         _user = User.fromJson(data['user']);
         
         print('✅ User object created: ${_user?.name}');
-        print('🏷️ User role: ${_user?.role}');
+        print('🏷 User role: ${_user?.role}');
         print('🆔 User enroll number: ${_user?.enrollNumber}');
         
         await _saveUserToStorage();
@@ -326,7 +326,7 @@ class AuthService extends ChangeNotifier {
         _user = User.fromJson(data['user']);
         
         print('✅ Admin user object created: ${_user?.name}');
-        print('🏷️ Admin role: ${_user?.role}');
+        print('🏷 Admin role: ${_user?.role}');
         print('🆔 Admin username: ${_user?.enrollNumber}');
         
         await _saveUserToStorage();

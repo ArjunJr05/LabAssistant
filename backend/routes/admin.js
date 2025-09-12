@@ -13,33 +13,31 @@ const adminOnly = (req, res, next) => {
   next();
 };
 
-// Get dashboard analytics - Optimized with parallel queries and proper indexing
+// Get dashboard analytics
 router.get('/analytics', auth, adminOnly, async (req, res) => {
   try {
     console.log('Admin requesting analytics...');
     
-    // Execute queries in parallel for better performance
-    const [totalStudents, totalSubjects, totalExercises, totalSubmissions, onlineStudents, recentSubmissions] = await Promise.all([
-      // Use indexed queries for better performance
-      pool.query('SELECT COUNT(*) FROM users WHERE role = $1', ['student']),
-      pool.query('SELECT COUNT(*) FROM subjects'),
-      pool.query('SELECT COUNT(*) FROM exercises'),
-      pool.query('SELECT COUNT(*) FROM submissions'),
-      // Optimized online students query using composite index
-      pool.query('SELECT COUNT(*) FROM users WHERE role = $1 AND is_online = true', ['student']),
-      // Optimized recent submissions with proper JOIN order and LIMIT
-      pool.query(`
-        SELECT s.id, s.submitted_at, s.status, s.score,
-               u.name as user_name, u.enroll_number, 
-               e.title as exercise_title, sub.name as subject_name
-        FROM submissions s
-        INNER JOIN users u ON s.user_id = u.id
-        INNER JOIN exercises e ON s.exercise_id = e.id
-        INNER JOIN subjects sub ON e.subject_id = sub.id
-        ORDER BY s.submitted_at DESC
-        LIMIT 10
-      `)
-    ]);
+    // Get basic counts
+    const totalStudents = await pool.query('SELECT COUNT(*) FROM users WHERE role = $1', ['student']);
+    const totalSubjects = await pool.query('SELECT COUNT(*) FROM subjects');
+    const totalExercises = await pool.query('SELECT COUNT(*) FROM exercises');
+    const totalSubmissions = await pool.query('SELECT COUNT(*) FROM submissions');
+    
+    // Get recent submissions
+    const recentSubmissions = await pool.query(`
+      SELECT s.*, u.name as user_name, u.enroll_number, 
+             e.title as exercise_title, sub.name as subject_name
+      FROM submissions s
+      JOIN users u ON s.user_id = u.id
+      JOIN exercises e ON s.exercise_id = e.id
+      JOIN subjects sub ON e.subject_id = sub.id
+      ORDER BY s.submitted_at DESC
+      LIMIT 10
+    `);
+    
+    // Get online student count
+    const onlineStudents = await pool.query('SELECT COUNT(*) FROM users WHERE role = $1 AND is_online = true', ['student']);
     
     const analytics = {
       totalStudents: parseInt(totalStudents.rows[0].count),

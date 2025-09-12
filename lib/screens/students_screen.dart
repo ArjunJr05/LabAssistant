@@ -42,10 +42,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
   Future<void> _checkOnlineStatus() async {
     if (_authService == null) return;
-    
-    // Check if user is still online in database
     if (_authService!.user?.isOnline == false) {
-      // User is marked offline, redirect to role selection
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           Navigator.of(context).pushReplacementNamed('/role-selection');
@@ -77,7 +74,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
         );
         
         // Redirect to role selection after a short delay
-        Future.delayed(Duration(seconds: 2), () {
+        Future.delayed(Duration(seconds: 1), () {
           if (mounted) {
             Navigator.of(context).pushReplacementNamed('/role-selection');
           }

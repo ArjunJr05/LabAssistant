@@ -31,10 +31,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
   ApiService? _apiService;
   Timer? _refreshTimer;
   bool _isRefreshing = false;
-  DateTime? _lastDataFetch;
-  bool _socketConnected = false;
-  Map<String, dynamic>? _cachedAnalytics;
-  List<User>? _cachedOnlineUsers;
 
   @override
   void initState() {
@@ -46,26 +42,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
       _apiService = ApiService(_authService!);
       
       _initializeSocket();
+      _loadAnalytics();
       _fetchOnlineUsers();
       _startPeriodicRefresh();
     });
   }
 
   void _startPeriodicRefresh() {
-    // Intelligent refresh: only when socket is disconnected or data is stale
-    _refreshTimer = Timer.periodic(Duration(seconds: 60), (timer) {
+    // Refresh online users every 30 seconds
+    _refreshTimer = Timer.periodic(Duration(seconds: 30), (timer) {
       if (mounted && !_isRefreshing) {
-        final now = DateTime.now();
-        final shouldRefresh = _lastDataFetch == null || 
-            now.difference(_lastDataFetch!).inMinutes > 2 ||
-            !_socketConnected;
-        
-        if (shouldRefresh) {
-          print('Intelligent refresh: Data is stale or socket disconnected');
-          _fetchOnlineUsers();
-        } else {
-          print('Skipping refresh: Data is fresh and socket connected');
-        }
+        print('Periodic refresh: Fetching online users...');
+        _fetchOnlineUsers();
       }
     });
   }
@@ -82,186 +70,57 @@ class _AdminDashboardState extends State<AdminDashboard> {
       'role': _authService!.user?.role,
     });
     
-    // Optimized socket listeners - reduce redundant API calls
+    // Listen for user connections
     _socketService!.socket?.on('user-connected', (data) {
       print('User connected: $data');
-      _updateUserListFromSocket(data, true);
+      _fetchOnlineUsers();
     });
     
+    // Listen for user disconnections
     _socketService!.socket?.on('user-disconnected', (data) {
       print('User disconnected: $data');
-      _updateUserListFromSocket(data, false);
+      _fetchOnlineUsers();
     });
     
-    // Use socket data directly instead of triggering API calls
+    // Listen for online users list updates
     _socketService!.socket?.on('online-users', (data) {
       print('Socket online users update: $data');
-      _updateOnlineUsersFromSocket(data);
+      // Don't rely only on socket data, still fetch from API for accuracy
+      _fetchOnlineUsers();
     });
 
     _socketService!.socket?.on('student-activity', (data) {
       print('Student activity: $data');
-      // Update last activity without full refresh
-      _updateUserActivity(data);
     });
     
+    // Request current online users when socket connects
     _socketService!.socket?.on('connect', (data) {
-      print('Socket connected');
-      _socketConnected = true;
+      print('Socket connected, requesting online users');
       _socketService!.socket?.emit('get-online-users');
-      // Only fetch from API if we don't have cached data
-      if (_cachedOnlineUsers == null) {
-        _fetchOnlineUsers();
-      }
+      _fetchOnlineUsers(); // Also fetch from API
     });
 
-    _socketService!.socket?.on('disconnect', (data) {
-      print('Socket disconnected');
-      _socketConnected = false;
-    });
-
+    // Listen for user status changes
     _socketService!.socket?.on('user-status-changed', (data) {
       print('User status changed: $data');
-      _updateUserListFromSocket(data, data['isOnline'] ?? false);
+      _fetchOnlineUsers(); // Refresh from database
     });
-  }
-
-  // Optimized socket data handlers to reduce API calls
-  void _updateUserListFromSocket(dynamic data, bool isOnline) {
-    if (data == null || !mounted) return;
-    
-    final enrollNumber = data['enrollNumber'] ?? data['enroll_number'];
-    final name = data['name'];
-    
-    if (enrollNumber == null || name == null) return;
-    
-    setState(() {
-      if (isOnline) {
-        // Add or update user in the list
-        final existingIndex = onlineUsers.indexWhere((u) => u.enrollNumber == enrollNumber);
-        if (existingIndex == -1) {
-          // Create new user from socket data
-          final newUser = User(
-            id: data['id'] ?? 0,
-            name: name,
-            enrollNumber: enrollNumber,
-            year: data['year'] ?? '',
-            section: data['section'] ?? '',
-            batch: data['batch'] ?? '',
-            role: data['role'] ?? 'student',
-            isOnline: true,
-            lastActive: DateTime.now(),
-          );
-          onlineUsers.add(newUser);
-        } else {
-          // Update existing user
-          onlineUsers[existingIndex] = onlineUsers[existingIndex].copyWith(
-            isOnline: true,
-            lastActive: DateTime.now(),
-          );
-        }
-      } else {
-        // Remove user from online list
-        onlineUsers.removeWhere((u) => u.enrollNumber == enrollNumber);
-      }
-      
-      // Update cache
-      _cachedOnlineUsers = List.from(onlineUsers);
-    });
-    
-    print('Updated user list from socket: ${onlineUsers.length} users online');
-  }
-
-  void _updateOnlineUsersFromSocket(dynamic data) {
-    if (data == null || !mounted) return;
-    
-    try {
-      List<User> socketUsers = [];
-      
-      if (data is List) {
-        for (var userData in data) {
-          if (userData is Map<String, dynamic>) {
-            socketUsers.add(User(
-              id: userData['id'] ?? 0,
-              name: userData['name'] ?? '',
-              enrollNumber: userData['enrollNumber'] ?? userData['enroll_number'] ?? '',
-              year: userData['year'] ?? '',
-              section: userData['section'] ?? '',
-              batch: userData['batch'] ?? '',
-              role: userData['role'] ?? 'student',
-              isOnline: true,
-              lastActive: DateTime.now(),
-            ));
-          }
-        }
-        
-        setState(() {
-          onlineUsers = socketUsers;
-          _cachedOnlineUsers = List.from(socketUsers);
-          _lastDataFetch = DateTime.now();
-        });
-        
-        print('Updated ${socketUsers.length} users from socket data');
-      }
-    } catch (e) {
-      print('Error updating users from socket: $e');
-    }
-  }
-
-  void _updateUserActivity(dynamic data) {
-    if (data == null || !mounted) return;
-    
-    final enrollNumber = data['userId'] ?? data['enrollNumber'];
-    if (enrollNumber == null) return;
-    
-    // Update last activity for the user without full refresh
-    final userIndex = onlineUsers.indexWhere((u) => u.enrollNumber == enrollNumber);
-    if (userIndex != -1) {
-      setState(() {
-        onlineUsers[userIndex] = onlineUsers[userIndex].copyWith(
-          lastActive: DateTime.now(),
-        );
-        _cachedOnlineUsers = List.from(onlineUsers);
-      });
-    }
   }
 
   Future<void> _loadAnalytics() async {
     if (_apiService == null) return;
-    
-    // Use cached data if available and fresh
-    if (_cachedAnalytics != null && _lastDataFetch != null) {
-      final cacheAge = DateTime.now().difference(_lastDataFetch!);
-      if (cacheAge.inMinutes < 5) {
-        print('Using cached analytics data');
-        if (mounted) {
-          setState(() {
-            analytics = _cachedAnalytics!;
-          });
-        }
-        return;
-      }
-    }
     
     try {
       final data = await _apiService!.getAdminAnalytics();
       if (mounted) {
         setState(() {
           analytics = data;
-          _cachedAnalytics = data;
-          _lastDataFetch = DateTime.now();
         });
       }
-      print('Loaded fresh analytics: $data');
+      print('Loaded analytics: $data');
     } catch (e) {
       print('Error loading analytics: $e');
-      // Use cached data as fallback
-      if (_cachedAnalytics != null && mounted) {
-        setState(() {
-          analytics = _cachedAnalytics!;
-        });
-        print('Using cached analytics as fallback');
-      } else if (mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to load analytics: $e'),
@@ -283,20 +142,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
       if (mounted) {
         setState(() {
           onlineUsers = users;
-          _cachedOnlineUsers = users;
-          _lastDataFetch = DateTime.now();
         });
       }
-      print('Successfully fetched ${users.length} online users from database');
+      print('Successfully fetched ${users.length} online users from database:');
+      for (var user in users) {
+        print('  - ${user.name} (${user.enrollNumber}) - Last active: ${user.lastActive}');
+      }
     } catch (e) {
       print('Error fetching online users: $e');
-      // Use cached data as fallback
-      if (_cachedOnlineUsers != null && mounted) {
-        setState(() {
-          onlineUsers = _cachedOnlineUsers!;
-        });
-        print('Using cached online users as fallback');
-      } else if (mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to fetch online users: $e'),
@@ -311,50 +165,27 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Future<void> _handleRefresh() async {
-    if (_isRefreshing) return; // Prevent multiple simultaneous refreshes
-    
     setState(() {
       _isRefreshing = true;
     });
     
-    try {
-      // Clear cache to force fresh data
-      _cachedAnalytics = null;
-      _cachedOnlineUsers = null;
-      _lastDataFetch = null;
-      
-      // Use timeout to prevent hanging
-      await Future.wait([
-        _fetchOnlineUsers(),
-        _loadAnalytics(),
-      ]).timeout(Duration(seconds: 10));
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Data refreshed successfully'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 1),
-          ),
-        );
-      }
-    } catch (e) {
-      print('Error during refresh: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Refresh failed: $e'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isRefreshing = false;
-        });
-      }
+    await Future.wait([
+      _fetchOnlineUsers(),
+      _loadAnalytics(),
+    ]);
+    
+    setState(() {
+      _isRefreshing = false;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Data refreshed successfully'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 1),
+        ),
+      );
     }
   }
 

@@ -20,6 +20,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
   List<Exercise> exercises = [];
   Subject? selectedSubject;
   bool isLoading = false;
+  Set<int> completedExerciseIds = {};
   
   // Store service references to avoid context access in dispose
   SocketService? _socketService;
@@ -117,6 +118,12 @@ class _StudentDashboardState extends State<StudentDashboard> {
       if (_authService != null) {
         final apiService = ApiService(_authService!);
         exercises = await apiService.getExercisesBySubject(subjectId);
+        
+        // Load completed exercises
+        final completedExercises = await apiService.getCompletedExercises();
+        completedExerciseIds = completedExercises
+            .map<int>((exercise) => exercise['exercise_id'] as int)
+            .toSet();
       }
     } catch (e) {
       if (mounted) {
@@ -308,9 +315,43 @@ class _StudentDashboardState extends State<StudentDashboard> {
                                       itemCount: exercises.length,
                                       itemBuilder: (context, index) {
                                         final exercise = exercises[index];
+                                        final isCompleted = completedExerciseIds.contains(exercise.id);
+                                        
                                         return Card(
                                           child: ListTile(
-                                            title: Text(exercise.title),
+                                            leading: isCompleted 
+                                                ? Icon(
+                                                    Icons.check_circle,
+                                                    color: Colors.green,
+                                                    size: 24,
+                                                  )
+                                                : Icon(
+                                                    Icons.radio_button_unchecked,
+                                                    color: Colors.grey,
+                                                    size: 24,
+                                                  ),
+                                            title: Row(
+                                              children: [
+                                                Expanded(child: Text(exercise.title)),
+                                                if (isCompleted)
+                                                  Container(
+                                                    padding: EdgeInsets.symmetric(
+                                                      horizontal: 8, vertical: 4),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.green,
+                                                      borderRadius: BorderRadius.circular(12),
+                                                    ),
+                                                    child: Text(
+                                                      'COMPLETED',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
                                             subtitle: Text(exercise.description),
                                             trailing: Chip(
                                               label: Text(exercise.difficultyLevel),
@@ -318,8 +359,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
                                                 exercise.difficultyLevel,
                                               ),
                                             ),
-                                            onTap: () {
-                                              Navigator.push(
+                                            onTap: () async {
+                                              final result = await Navigator.push(
                                                 context,
                                                 MaterialPageRoute(
                                                   builder: (context) =>
@@ -328,6 +369,11 @@ class _StudentDashboardState extends State<StudentDashboard> {
                                                   ),
                                                 ),
                                               );
+                                              
+                                              // Refresh completion status if exercise was completed
+                                              if (result == true && selectedSubject != null) {
+                                                _loadExercises(selectedSubject!.id);
+                                              }
                                             },
                                           ),
                                         );

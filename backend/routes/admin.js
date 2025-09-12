@@ -629,6 +629,101 @@ router.put('/exercises/:exerciseId', auth, adminOnly, async (req, res) => {
   }
 });
 
+// Get student exercise activities for monitoring
+router.get('/student-activities/:studentId', auth, adminOnly, async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    
+    const activities = await pool.query(`
+      SELECT 
+        sa.*, e.title as exercise_title, s.name as subject_name,
+        u.name as student_name, u.enroll_number
+      FROM student_activities sa
+      JOIN exercises e ON sa.exercise_id = e.id
+      JOIN subjects s ON e.subject_id = s.id
+      JOIN users u ON sa.user_id = u.id
+      WHERE sa.user_id = $1
+      ORDER BY sa.created_at DESC
+    `, [studentId]);
+    
+    res.json(activities.rows);
+  } catch (error) {
+    console.error('Error fetching student activities:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
+// Get student exercise progress for a specific exercise
+router.get('/student-progress/:studentId/:exerciseId', auth, adminOnly, async (req, res) => {
+  try {
+    const { studentId, exerciseId } = req.params;
+    
+    // Get all activities for this student and exercise
+    const activities = await pool.query(`
+      SELECT 
+        activity_type, status, score, tests_passed, total_tests,
+        test_results, created_at
+      FROM student_activities
+      WHERE user_id = $1 AND exercise_id = $2
+      ORDER BY created_at ASC
+    `, [studentId, exerciseId]);
+    
+    // Get latest submission
+    const submission = await pool.query(`
+      SELECT status, score, test_cases_passed, total_test_cases, code, submitted_at
+      FROM submissions
+      WHERE user_id = $1 AND exercise_id = $2
+      ORDER BY submitted_at DESC
+      LIMIT 1
+    `, [studentId, exerciseId]);
+    
+    // Get exercise details
+    const exercise = await pool.query(`
+      SELECT e.title, s.name as subject_name
+      FROM exercises e
+      JOIN subjects s ON e.subject_id = s.id
+      WHERE e.id = $1
+    `, [exerciseId]);
+    
+    res.json({
+      exercise: exercise.rows[0] || null,
+      activities: activities.rows,
+      latestSubmission: submission.rows[0] || null
+    });
+  } catch (error) {
+    console.error('Error fetching student progress:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get all exercises with completion status for a student
+router.get('/student-exercises/:studentId', auth, adminOnly, async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    
+    const exercises = await pool.query(`
+      SELECT 
+        e.id, e.title, s.name as subject_name,
+        CASE 
+          WHEN sub.status = 'passed' THEN true 
+          ELSE false 
+        END as completed,
+        sub.score,
+        sub.submitted_at,
+        COUNT(sa.id) as activity_count
+      FROM exercises e
+      JOIN subjects s ON e.subject_id = s.id
+      LEFT JOIN submissions sub ON e.id = sub.exercise_id AND sub.user_id = $1 AND sub.status = 'passed'
+      LEFT JOIN student_activities sa ON e.id = sa.exercise_id AND sa.user_id = $1
+      GROUP BY e.id, e.title, s.name, sub.status, sub.score, sub.submitted_at
+      ORDER BY s.name, e.created_at
+    `, [studentId]);
+    
+    res.json(exercises.rows);
+  } catch (error) {
+    console.error('Error fetching student exercises:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 module.exports = router;

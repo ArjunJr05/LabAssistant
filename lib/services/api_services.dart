@@ -533,6 +533,116 @@ class ApiService {
     }
   }
 
+  // Get completed exercises for student
+  Future<List<Map<String, dynamic>>> getCompletedExercises() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/student/completed-exercises'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        }
+        return [];
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        throw Exception('Failed to load completed exercises: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching completed exercises: $e');
+      if (e.toString().contains('Authentication')) {
+        rethrow;
+      }
+      return [];
+    }
+  }
+
+  // Get last submission for an exercise
+  Future<Map<String, dynamic>?> getLastSubmission(int exerciseId) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/student/last-submission/$exerciseId'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['hasSubmission'] == true) {
+          return data['submission'];
+        }
+        return null;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        throw Exception('Failed to load last submission: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching last submission: $e');
+      if (e.toString().contains('Authentication')) {
+        rethrow;
+      }
+      return null;
+    }
+  }
+
+  // Admin: Get student exercises with completion status
+  Future<List<Map<String, dynamic>>> getStudentExercises(int studentId) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/admin/student-exercises/$studentId'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        }
+        return [];
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        throw Exception('Failed to load student exercises: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching student exercises: $e');
+      rethrow;
+    }
+  }
+
+  // Admin: Get student progress for specific exercise
+  Future<Map<String, dynamic>> getStudentProgress(int studentId, int exerciseId) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/admin/student-progress/$studentId/$exerciseId'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        throw Exception('Failed to load student progress: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching student progress: $e');
+      rethrow;
+    }
+  }
+
   // Helper method to retry failed requests
   Future<T> retryRequest<T>(Future<T> Function() request, {int maxRetries = 3}) async {
     int retryCount = 0;

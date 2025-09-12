@@ -52,4 +52,29 @@ class User {
       'lastActive': lastActive?.toIso8601String(), // Added lastActive to JSON
     };
   }
+
+  // copyWith method for immutable updates
+  User copyWith({
+    int? id,
+    String? name,
+    String? enrollNumber,
+    String? year,
+    String? section,
+    String? batch,
+    String? role,
+    bool? isOnline,
+    DateTime? lastActive,
+  }) {
+    return User(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      enrollNumber: enrollNumber ?? this.enrollNumber,
+      year: year ?? this.year,
+      section: section ?? this.section,
+      batch: batch ?? this.batch,
+      role: role ?? this.role,
+      isOnline: isOnline ?? this.isOnline,
+      lastActive: lastActive ?? this.lastActive,
+    );
+  }
 }

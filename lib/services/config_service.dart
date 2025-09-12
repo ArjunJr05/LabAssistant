@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ConfigService {
   static const String _serverIpKey = 'server_ip';
   static const String _serverPortKey = 'server_port';
-  static const String _defaultServerIp = '172.17.13.191'; // Default Wi-Fi IP
+  static const String _defaultServerIp = '172.17.13.167'; // Default Wi-Fi IP
   static const int _defaultServerPort = 3000;
   
   static String? _cachedServerIp;

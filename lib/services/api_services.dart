@@ -1,5 +1,6 @@
 // lib/services/api_service.dart
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:labassistant/models/excercise_model.dart';
 import '../models/subject_model.dart';
@@ -10,6 +11,15 @@ import 'config_service.dart';
 class ApiService {
   final AuthService authService;
   String? _cachedBaseUrl;
+
+  // Cache management
+  final Map<String, dynamic> _cache = {};
+  final Map<String, DateTime> _cacheTimestamps = {};
+  static const Duration _cacheTimeout = Duration(minutes: 5);
+
+  // Request debouncing
+  final Map<String, Timer> _debounceTimers = {};
+  final Map<String, Completer<dynamic>> _pendingRequests = {};
 
   ApiService(this.authService);
 
@@ -41,25 +51,54 @@ class ApiService {
     }
   }
 
-  // Get online users
+  // Cached and optimized get online users
   Future<List<User>> getOnlineUsers() async {
+    const cacheKey = 'online_users';
+
+    // Check cache first
+    if (_isDataFresh(cacheKey)) {
+      final cachedData = _cache[cacheKey] as List<User>;
+      print('Using cached online users: ${cachedData.length} users');
+      return cachedData;
+    }
+
+    // Debounce multiple simultaneous requests
+    if (_pendingRequests.containsKey(cacheKey)) {
+      return await _pendingRequests[cacheKey]!.future as List<User>;
+    }
+
+    final completer = Completer<List<User>>();
+    _pendingRequests[cacheKey] = completer;
+
     try {
       final url = await baseUrl;
       final response = await http.get(
         Uri.parse('$url/admin/online-users'),
         headers: authService.authHeaders,
-      );
+      ).timeout(Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        return data.map((user) => User.fromJson(user)).toList();
+        final users = data.map((user) => User.fromJson(user)).toList();
+
+        // Cache the result
+        _cacheData(cacheKey, users);
+
+        completer.complete(users);
+        return users;
       } else {
         print('Failed to fetch online users: ${response.statusCode}');
-        return [];
+        final fallback = _cache[cacheKey] as List<User>? ?? <User>[];
+        completer.complete(fallback);
+        return fallback;
       }
     } catch (e) {
       print('Error fetching online users: $e');
-      return [];
+      final fallback = _cache[cacheKey] as List<User>? ?? <User>[];
+      completer.complete(fallback);
+      return fallback;
+    } finally {
+      _pendingRequests.remove(cacheKey);
     }
   }
 
@@ -67,7 +106,7 @@ class ApiService {
   Future<bool> sendAdminShutdownNotification() async {
     try {
       print('🚨 Sending admin shutdown notification...');
-      
+
       final url = await baseUrl;
       final response = await http.post(
         Uri.parse('$url/admin/shutdown-notification'),
@@ -93,8 +132,6 @@ class ApiService {
       return false;
     }
   }
-
-  // Helper method to check API connectivity
 
   // Seed sample data for testing
   Future<bool> seedSampleData() async {
@@ -128,13 +165,13 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final dynamic data = json.decode(response.body);
-        
+
         // Handle null response
         if (data == null) {
           print('Received null response for subjects');
           return [];
         }
-        
+
         if (data is List) {
           return data
               .map((json) => Subject.fromJson(json as Map<String, dynamic>))
@@ -158,7 +195,7 @@ class ApiService {
         print('HTTP Error ${response.statusCode}: ${response.body}');
         throw Exception('Failed to load subjects: ${response.statusCode}');
       }
-      
+
       return [];
     } catch (e) {
       print('Error fetching subjects: $e');
@@ -173,7 +210,7 @@ class ApiService {
   Future<List<Exercise>> getExercisesBySubject(int subjectId) async {
     try {
       print('Fetching exercises for subject ID: $subjectId');
-      
+
       final url = await baseUrl;
       final response = await http.get(
         Uri.parse('$url/exercises/subject/$subjectId'),
@@ -185,7 +222,7 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final dynamic data = json.decode(response.body);
-        
+
         if (data == null) {
           print('Received null response for exercises');
           return [];
@@ -239,7 +276,7 @@ class ApiService {
   Future<Exercise?> getExercise(int exerciseId) async {
     try {
       print('=== FETCHING EXERCISE $exerciseId ===');
-      
+
       final url = await baseUrl;
       final response = await http.get(
         Uri.parse('$url/exercises/$exerciseId'),
@@ -252,12 +289,12 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         print('Decoded exercise data: $data');
-        
+
         if (data is Map<String, dynamic>) {
           final exercise = Exercise.fromJson(data);
           print('Successfully parsed exercise: ${exercise.title}');
           print('Test cases count: ${exercise.testCases.length}');
-          
+
           return exercise;
         } else {
           print('Expected Map but got: ${data.runtimeType}');
@@ -272,7 +309,7 @@ class ApiService {
       }
     } catch (e) {
       print('Error fetching exercise: $e');
-      if (e.toString().contains('Authentication') || 
+      if (e.toString().contains('Authentication') ||
           e.toString().contains('not found')) {
         rethrow;
       }
@@ -282,12 +319,12 @@ class ApiService {
 
   Future<bool> deleteExercise(int exerciseId) async {
     try {
-      print('🗑️ DELETE EXERCISE ATTEMPT');
+      print('🗑 DELETE EXERCISE ATTEMPT');
       print('Exercise ID: $exerciseId');
       final url = await baseUrl;
       print('URL: $url/admin/exercises/$exerciseId');
       print('Headers: ${authService.authHeaders}');
-      
+
       final response = await http.delete(
         Uri.parse('$url/admin/exercises/$exerciseId'),
         headers: authService.authHeaders,
@@ -328,7 +365,7 @@ class ApiService {
     try {
       print('Running test cases for exercise $exerciseId');
       print('Code length: ${code.length} characters');
-      
+
       final url = await baseUrl;
       final response = await http.post(
         Uri.parse('$url/exercises/$exerciseId/test'),
@@ -365,7 +402,7 @@ class ApiService {
     try {
       print('Submitting code for exercise $exerciseId');
       print('Code length: ${code.length} characters');
-      
+
       final url = await baseUrl;
       final response = await http.post(
         Uri.parse('$url/exercises/$exerciseId/submit'),
@@ -435,32 +472,70 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getAdminAnalytics() async {
+    const cacheKey = 'admin_analytics';
+
+    // Check cache first
+    if (_isDataFresh(cacheKey)) {
+      final cachedData = _cache[cacheKey] as Map<String, dynamic>;
+      print('Using cached analytics data');
+      return cachedData;
+    }
+
+    // Debounce multiple simultaneous requests
+    if (_pendingRequests.containsKey(cacheKey)) {
+      return await _pendingRequests[cacheKey]!.future as Map<String, dynamic>;
+    }
+
+    final completer = Completer<Map<String, dynamic>>();
+    _pendingRequests[cacheKey] = completer;
+
     try {
       final url = await baseUrl;
       final response = await http.get(
         Uri.parse('$url/admin/analytics'),
         headers: authService.authHeaders,
-      );
+      ).timeout(Duration(seconds: 8));
 
       if (response.statusCode == 200) {
-        return json.decode(response.body) as Map<String, dynamic>;
+        final data = json.decode(response.body) as Map<String, dynamic>;
+
+        // Cache the result
+        _cacheData(cacheKey, data);
+
+        completer.complete(data);
+        return data;
       } else if (response.statusCode == 401) {
-        throw Exception('Authentication failed. Please login again.');
+        final error = Exception('Authentication failed. Please login again.');
+        completer.completeError(error);
+        throw error;
       } else if (response.statusCode == 403) {
-        throw Exception('Access denied. Admin privileges required.');
+        final error = Exception('Access denied. Admin privileges required.');
+        completer.completeError(error);
+        throw error;
       } else {
-        throw Exception('Failed to load analytics: ${response.statusCode}');
+        final fallback = _cache[cacheKey] as Map<String, dynamic>? ?? {};
+        completer.complete(fallback);
+        return fallback;
       }
     } catch (e) {
       print('Error fetching analytics: $e');
-      rethrow;
+      if (e.toString().contains('Authentication') ||
+          e.toString().contains('Access denied')) {
+        completer.completeError(e);
+        rethrow;
+      }
+      final fallback = _cache[cacheKey] as Map<String, dynamic>? ?? {};
+      completer.complete(fallback);
+      return fallback;
+    } finally {
+      _pendingRequests.remove(cacheKey);
     }
   }
 
   Future<bool> createExercise(Map<String, dynamic> exerciseData) async {
     try {
       print('Creating exercise with data: $exerciseData');
-      
+
       final url = await baseUrl;
       final response = await http.post(
         Uri.parse('$url/admin/exercises'),
@@ -490,7 +565,7 @@ class ApiService {
   Future<bool> createSubject(Map<String, dynamic> subjectData) async {
     try {
       print('Creating subject with data: $subjectData');
-      
+
       final url = await baseUrl;
       final response = await http.post(
         Uri.parse('$url/admin/subjects'),
@@ -643,10 +718,56 @@ class ApiService {
     }
   }
 
-  // Helper method to retry failed requests
+  // Cache management methods
+  bool _isDataFresh(String key) {
+    if (!_cache.containsKey(key) || !_cacheTimestamps.containsKey(key)) {
+      return false;
+    }
+
+    final cacheTime = _cacheTimestamps[key]!;
+    final now = DateTime.now();
+    return now.difference(cacheTime) < _cacheTimeout;
+  }
+
+  void _cacheData(String key, dynamic data) {
+    _cache[key] = data;
+    _cacheTimestamps[key] = DateTime.now();
+  }
+
+  void clearCache([String? key]) {
+    if (key != null) {
+      _cache.remove(key);
+      _cacheTimestamps.remove(key);
+    } else {
+      _cache.clear();
+      _cacheTimestamps.clear();
+    }
+  }
+
+  // Cleanup method to prevent memory leaks
+  void dispose() {
+    // Cancel all pending debounce timers
+    for (final timer in _debounceTimers.values) {
+      timer.cancel();
+    }
+    _debounceTimers.clear();
+
+    // Complete any pending requests with empty results
+    for (final completer in _pendingRequests.values) {
+      if (!completer.isCompleted) {
+        completer.complete(null);
+      }
+    }
+    _pendingRequests.clear();
+
+    // Clear cache
+    clearCache();
+  }
+
+  // Helper method to retry failed requests with exponential backoff
   Future<T> retryRequest<T>(Future<T> Function() request, {int maxRetries = 3}) async {
     int retryCount = 0;
-    
+
     while (retryCount < maxRetries) {
       try {
         return await request();
@@ -655,12 +776,13 @@ class ApiService {
         if (retryCount >= maxRetries) {
           rethrow;
         }
-        
+
         print('Request failed, retrying ($retryCount/$maxRetries): $e');
-        await Future.delayed(Duration(seconds: retryCount));
+        // Exponential backoff: 1s, 2s, 4s
+        await Future.delayed(Duration(seconds: 1 << (retryCount - 1)));
       }
     }
-    
+
     throw Exception('Max retries exceeded');
   }
 }

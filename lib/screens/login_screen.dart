@@ -332,6 +332,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   
+  // Password visibility states
+  bool _obscurePassword = true;
+  bool _obscureAdminPassword = true;
+  bool _obscureMasterPassword = true;
+  
   // Registration fields
   final _nameController = TextEditingController();
   final _yearController = TextEditingController();
@@ -579,7 +584,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                           controller: _adminPasswordController,
                                           label: 'Admin Password',
                                           icon: Icons.lock,
-                                          obscureText: true,
+                                          obscureText: _obscureAdminPassword,
+                                          isPassword: true,
+                                          onToggleVisibility: () => setState(() => _obscureAdminPassword = !_obscureAdminPassword),
                                           validator: (value) => value?.isEmpty == true ? 'Admin password is required' : null,
                                         ),
                                         const SizedBox(height: 20),
@@ -588,7 +595,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                           label: 'Master Password',
                                           icon: Icons.security,
                                           hint: 'Admin_aids@smvec',
-                                          obscureText: true,
+                                          obscureText: _obscureMasterPassword,
+                                          isPassword: true,
+                                          onToggleVisibility: () => setState(() => _obscureMasterPassword = !_obscureMasterPassword),
                                           validator: (value) {
                                             if (value?.isEmpty == true) return 'Master password is required';
                                             if (value != 'Admin_aids@smvec') return 'Invalid master password';
@@ -640,15 +649,19 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                         ),
                                       ],
                                       
-                                      if (_isLogin || !widget.isAdminMode)
+                                      if (_isLogin || !widget.isAdminMode) ...[
+                                        const SizedBox(height: 20),
                                         _buildTextField(
                                           controller: _passwordController,
                                           label: 'Password',
                                           icon: Icons.lock,
                                           hint: widget.isAdminMode ? 'Admin_aids@smvec' : null,
-                                          obscureText: true,
+                                          obscureText: _obscurePassword,
+                                          isPassword: true,
+                                          onToggleVisibility: () => setState(() => _obscurePassword = !_obscurePassword),
                                           validator: (value) => value?.isEmpty == true ? 'Password is required' : null,
                                         ),
+                                      ],
                                       
                                       const SizedBox(height: 32),
                                       
@@ -731,6 +744,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     required IconData icon,
     String? hint,
     bool obscureText = false,
+    bool isPassword = false,
+    VoidCallback? onToggleVisibility,
     String? Function(String?)? validator,
   }) {
     return TextFormField(
@@ -755,6 +770,15 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           ),
           child: Icon(icon, color: Colors.white, size: 20),
         ),
+        suffixIcon: isPassword
+            ? IconButton(
+                icon: Icon(
+                  obscureText ? Icons.visibility_off : Icons.visibility,
+                  color: Colors.white.withOpacity(0.7),
+                ),
+                onPressed: onToggleVisibility,
+              )
+            : null,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: Colors.white.withOpacity(0.4)),

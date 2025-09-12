@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:labassistant/services/api_services.dart';
 import 'package:labassistant/services/socket_services.dart';
 import 'package:provider/provider.dart';
@@ -25,54 +26,45 @@ class _AdminDashboardState extends State<AdminDashboard> {
     'totalSubmissions': 0
   };
 
-  // Store service references to avoid context access in dispose
+  // Service references
   SocketService? _socketService;
   AuthService? _authService;
   ApiService? _apiService;
+  
+  // Status tracking
+  Timer? _statusCheckTimer;
   Timer? _refreshTimer;
   bool _isRefreshing = false;
-  DateTime? _lastDataFetch;
   bool _socketConnected = false;
+  bool _serverOnline = false;
+  
+  // Last update tracking
+  DateTime? _lastDataUpdate;
+  DateTime? _lastDataFetch;
   Map<String, dynamic>? _cachedAnalytics;
-  List<User>? _cachedOnlineUsers;
 
   @override
   void initState() {
     super.initState();
-    // Store service references early to avoid context access in dispose
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _socketService = Provider.of<SocketService>(context, listen: false);
-      _authService = Provider.of<AuthService>(context, listen: false);
-      _apiService = ApiService(_authService!);
-      
+      _initializeServices();
       _initializeSocket();
-      _fetchOnlineUsers();
+      _setupSocketListeners();
       _startPeriodicRefresh();
+      _fetchInitialData();
     });
   }
 
-  void _startPeriodicRefresh() {
-    // Intelligent refresh: only when socket is disconnected or data is stale
-    _refreshTimer = Timer.periodic(Duration(seconds: 60), (timer) {
-      if (mounted && !_isRefreshing) {
-        final now = DateTime.now();
-        final shouldRefresh = _lastDataFetch == null || 
-            now.difference(_lastDataFetch!).inMinutes > 2 ||
-            !_socketConnected;
-        
-        if (shouldRefresh) {
-          print('Intelligent refresh: Data is stale or socket disconnected');
-          _fetchOnlineUsers();
-        } else {
-          print('Skipping refresh: Data is fresh and socket connected');
-        }
-      }
-    });
+  void _initializeServices() {
+    _socketService = Provider.of<SocketService>(context, listen: false);
+    _authService = Provider.of<AuthService>(context, listen: false);
+    _apiService = ApiService(_authService!);
   }
 
   void _initializeSocket() {
     if (_socketService == null || _authService == null) return;
     
+    print('Admin connecting to socket...');
     _socketService!.connect();
     
     // Register admin login with socket
@@ -81,158 +73,245 @@ class _AdminDashboardState extends State<AdminDashboard> {
       'name': _authService!.user?.name,
       'role': _authService!.user?.role,
     });
-    
-    // Optimized socket listeners - reduce redundant API calls
-    _socketService!.socket?.on('user-connected', (data) {
-      print('User connected: $data');
-      _updateUserListFromSocket(data, true);
+  }
+
+  void _setupSocketListeners() {
+    if (_socketService?.socket == null) return;
+
+    print('Setting up socket listeners for admin dashboard');
+
+    // Connection status
+    _socketService!.socket!.on('connect', (_) {
+      print('Admin socket connected');
+      _socketConnected = true;
+      _serverOnline = true;
+      if (mounted) setState(() {});
+      
+      // Immediately request online users when admin connects
+      Timer(Duration(milliseconds: 500), () {
+        _socketService!.socket!.emit('get-online-users');
+        print('Requested online users from server');
+      });
     });
-    
-    _socketService!.socket?.on('user-disconnected', (data) {
-      print('User disconnected: $data');
-      _updateUserListFromSocket(data, false);
+
+    _socketService!.socket!.on('disconnect', (_) {
+      print('Admin socket disconnected');
+      _socketConnected = false;
+      _serverOnline = false;
+      if (mounted) setState(() {});
     });
-    
-    // Use socket data directly instead of triggering API calls
-    _socketService!.socket?.on('online-users', (data) {
-      print('Socket online users update: $data');
+
+    // Listen for student login events
+    _socketService!.socket!.on('student-login', (data) {
+      print('STUDENT LOGIN EVENT RECEIVED: $data');
+      _handleUserConnected(data);
+      // Force immediate refresh from database
+      Future.delayed(Duration(milliseconds: 500), () {
+        _fetchOnlineUsers();
+      });
+    });
+
+    // Listen for student logout events
+    _socketService!.socket!.on('student-logout', (data) {
+      print('STUDENT LOGOUT EVENT RECEIVED: $data');
+      _handleUserDisconnected(data);
+      // Force immediate refresh from database
+      Future.delayed(Duration(milliseconds: 500), () {
+        _fetchOnlineUsers();
+      });
+    });
+
+    // Listen for user connected/disconnected events
+    _socketService!.socket!.on('user-connected', (data) {
+      print('USER CONNECTED EVENT RECEIVED: $data');
+      _handleUserConnected(data);
+      Future.delayed(Duration(milliseconds: 500), () {
+        _fetchOnlineUsers();
+      });
+    });
+
+    _socketService!.socket!.on('user-disconnected', (data) {
+      print('USER DISCONNECTED EVENT RECEIVED: $data');
+      _handleUserDisconnected(data);
+      Future.delayed(Duration(milliseconds: 500), () {
+        _fetchOnlineUsers();
+      });
+    });
+
+    // Listen for online users updates
+    _socketService!.socket!.on('online-users', (data) {
+      print('ONLINE USERS UPDATE RECEIVED: ${data is List ? data.length : 0} users');
       _updateOnlineUsersFromSocket(data);
     });
 
-    _socketService!.socket?.on('student-activity', (data) {
-      print('Student activity: $data');
-      // Update last activity without full refresh
-      _updateUserActivity(data);
-    });
-    
-    _socketService!.socket?.on('connect', (data) {
-      print('Socket connected');
-      _socketConnected = true;
-      _socketService!.socket?.emit('get-online-users');
-      // Only fetch from API if we don't have cached data
-      if (_cachedOnlineUsers == null) {
-        _fetchOnlineUsers();
+    _socketService!.socket!.on('user-status-update', (data) {
+      print('USER STATUS UPDATE RECEIVED: ${data is List ? data.length : 0} users');
+      if (data is List) {
+        _updateOnlineUsersFromSocket(data);
       }
-    });
-
-    _socketService!.socket?.on('disconnect', (data) {
-      print('Socket disconnected');
-      _socketConnected = false;
-    });
-
-    _socketService!.socket?.on('user-status-changed', (data) {
-      print('User status changed: $data');
-      _updateUserListFromSocket(data, data['isOnline'] ?? false);
     });
   }
 
-  // Optimized socket data handlers to reduce API calls
-  void _updateUserListFromSocket(dynamic data, bool isOnline) {
-    if (data == null || !mounted) return;
-    
+  void _startPeriodicRefresh() {
+    // More frequent refresh for better real-time updates
+    _refreshTimer = Timer.periodic(Duration(seconds: 5), (timer) {
+      if (mounted && !_isRefreshing) {
+        final now = DateTime.now();
+        final shouldRefresh = _lastDataFetch == null || 
+            now.difference(_lastDataFetch!).inSeconds > 10 ||
+            !_socketConnected;
+        
+        if (shouldRefresh) {
+          print('Real-time refresh: Updating student data');
+          _fetchOnlineUsers();
+        }
+      }
+    });
+  }
+
+  void _handleUserConnected(dynamic data) {
+    if (data == null) return;
+
     final enrollNumber = data['enrollNumber'] ?? data['enroll_number'];
     final name = data['name'];
     
     if (enrollNumber == null || name == null) return;
+
+    print('Adding user: $name ($enrollNumber)');
+
+    // Remove if exists, then add updated version
+    onlineUsers.removeWhere((user) => user.enrollNumber == enrollNumber);
     
-    setState(() {
-      if (isOnline) {
-        // Add or update user in the list
-        final existingIndex = onlineUsers.indexWhere((u) => u.enrollNumber == enrollNumber);
-        if (existingIndex == -1) {
-          // Create new user from socket data
-          final newUser = User(
-            id: data['id'] ?? 0,
-            name: name,
-            enrollNumber: enrollNumber,
-            year: data['year'] ?? '',
-            section: data['section'] ?? '',
-            batch: data['batch'] ?? '',
-            role: data['role'] ?? 'student',
-            isOnline: true,
-            lastActive: DateTime.now(),
-          );
-          onlineUsers.add(newUser);
-        } else {
-          // Update existing user
-          onlineUsers[existingIndex] = onlineUsers[existingIndex].copyWith(
-            isOnline: true,
-            lastActive: DateTime.now(),
-          );
-        }
-      } else {
-        // Remove user from online list
-        onlineUsers.removeWhere((u) => u.enrollNumber == enrollNumber);
+    // Add new user
+    final newUser = User(
+      id: data['id'] ?? 0,
+      name: name,
+      enrollNumber: enrollNumber,
+      year: data['year'] ?? '',
+      section: data['section'] ?? '',
+      batch: data['batch'] ?? '',
+      role: data['role'] ?? 'student',
+      isOnline: true,
+      lastActive: DateTime.now(),
+    );
+
+    onlineUsers.add(newUser);
+    _lastDataUpdate = DateTime.now();
+
+    if (mounted) {
+      setState(() {});
+      print('UI updated - ${onlineUsers.length} users online');
+    }
+  }
+
+  void _handleUserDisconnected(dynamic data) {
+    if (data == null) return;
+
+    final enrollNumber = data['enrollNumber'] ?? data['enroll_number'];
+    if (enrollNumber == null) return;
+
+    print('Removing user: $enrollNumber');
+
+    // Remove user from list
+    final initialCount = onlineUsers.length;
+    onlineUsers.removeWhere((user) => user.enrollNumber == enrollNumber);
+    
+    if (onlineUsers.length != initialCount) {
+      _lastDataUpdate = DateTime.now();
+      if (mounted) {
+        setState(() {});
+        print('UI updated - ${onlineUsers.length} users online');
       }
-      
-      // Update cache
-      _cachedOnlineUsers = List.from(onlineUsers);
-    });
-    
-    print('Updated user list from socket: ${onlineUsers.length} users online');
+    }
   }
 
   void _updateOnlineUsersFromSocket(dynamic data) {
-    if (data == null || !mounted) return;
-    
-    try {
-      List<User> socketUsers = [];
+    if (data is List && mounted) {
+      final socketUsers = <User>[];
       
-      if (data is List) {
-        for (var userData in data) {
-          if (userData is Map<String, dynamic>) {
-            socketUsers.add(User(
+      for (final userData in data) {
+        if (userData is Map<String, dynamic>) {
+          // Only include users that are actually marked as online
+          final isOnline = userData['is_online'] ?? userData['isOnline'] ?? false;
+          
+          if (isOnline) {
+            final user = User(
               id: userData['id'] ?? 0,
               name: userData['name'] ?? '',
-              enrollNumber: userData['enrollNumber'] ?? userData['enroll_number'] ?? '',
+              enrollNumber: userData['enroll_number'] ?? userData['enrollNumber'] ?? '',
               year: userData['year'] ?? '',
               section: userData['section'] ?? '',
               batch: userData['batch'] ?? '',
               role: userData['role'] ?? 'student',
               isOnline: true,
-              lastActive: DateTime.now(),
-            ));
+              lastActive: userData['last_active'] != null 
+                  ? DateTime.tryParse(userData['last_active'].toString()) ?? DateTime.now()
+                  : DateTime.now(),
+            );
+            socketUsers.add(user);
           }
         }
-        
-        setState(() {
-          onlineUsers = socketUsers;
-          _cachedOnlineUsers = List.from(socketUsers);
-          _lastDataFetch = DateTime.now();
-        });
-        
-        print('Updated ${socketUsers.length} users from socket data');
       }
-    } catch (e) {
-      print('Error updating users from socket: $e');
+
+      setState(() {
+        onlineUsers = socketUsers;
+        _lastDataUpdate = DateTime.now();
+      });
+      
+      print('Updated from socket: ${onlineUsers.length} users online');
     }
   }
 
-  void _updateUserActivity(dynamic data) {
-    if (data == null || !mounted) return;
-    
-    final enrollNumber = data['userId'] ?? data['enrollNumber'];
-    if (enrollNumber == null) return;
-    
-    // Update last activity for the user without full refresh
-    final userIndex = onlineUsers.indexWhere((u) => u.enrollNumber == enrollNumber);
-    if (userIndex != -1) {
-      setState(() {
-        onlineUsers[userIndex] = onlineUsers[userIndex].copyWith(
-          lastActive: DateTime.now(),
-        );
-        _cachedOnlineUsers = List.from(onlineUsers);
-      });
+  Future<void> _fetchOnlineUsers() async {
+    if (_isRefreshing || _apiService == null) return;
+
+    print('Refreshing online users from database...');
+    _isRefreshing = true;
+
+    try {
+      final users = await _apiService!.getOnlineUsers();
+      
+      // Filter to only include actually online users
+      final actuallyOnlineUsers = users.where((user) => user.isOnline == true).toList();
+      
+      print('Database returned ${users.length} total, ${actuallyOnlineUsers.length} actually online');
+      
+      if (mounted) {
+        setState(() {
+          onlineUsers = actuallyOnlineUsers;
+          _lastDataUpdate = DateTime.now();
+          _lastDataFetch = DateTime.now();
+        });
+      }
+    } catch (e) {
+      print('Error refreshing online users: $e');
+      
+      // If API fails, clear the list to prevent showing stale data
+      if (mounted) {
+        setState(() {
+          onlineUsers = [];
+        });
+      }
+    } finally {
+      _isRefreshing = false;
     }
+  }
+
+  Future<void> _fetchInitialData() async {
+    print('Fetching initial data...');
+    await Future.wait([
+      _fetchOnlineUsers(),
+      _loadAnalytics(),
+    ]);
   }
 
   Future<void> _loadAnalytics() async {
     if (_apiService == null) return;
     
-    // Use cached data if available and fresh
+    // Reduced cache time for more frequent analytics updates
     if (_cachedAnalytics != null && _lastDataFetch != null) {
       final cacheAge = DateTime.now().difference(_lastDataFetch!);
-      if (cacheAge.inMinutes < 5) {
+      if (cacheAge.inSeconds < 30) { // Changed from 5 minutes to 30 seconds
         print('Using cached analytics data');
         if (mounted) {
           setState(() {
@@ -255,96 +334,52 @@ class _AdminDashboardState extends State<AdminDashboard> {
       print('Loaded fresh analytics: $data');
     } catch (e) {
       print('Error loading analytics: $e');
-      // Use cached data as fallback
       if (_cachedAnalytics != null && mounted) {
         setState(() {
           analytics = _cachedAnalytics!;
         });
         print('Using cached analytics as fallback');
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load analytics: $e'),
-            backgroundColor: Colors.orange,
-          ),
-        );
       }
-    }
-  }
-  
-  Future<void> _fetchOnlineUsers() async {
-    if (_apiService == null || _isRefreshing) return;
-    
-    _isRefreshing = true;
-    
-    try {
-      print('Fetching online users from API...');
-      final users = await _apiService!.getOnlineUsers();
-      if (mounted) {
-        setState(() {
-          onlineUsers = users;
-          _cachedOnlineUsers = users;
-          _lastDataFetch = DateTime.now();
-        });
-      }
-      print('Successfully fetched ${users.length} online users from database');
-    } catch (e) {
-      print('Error fetching online users: $e');
-      // Use cached data as fallback
-      if (_cachedOnlineUsers != null && mounted) {
-        setState(() {
-          onlineUsers = _cachedOnlineUsers!;
-        });
-        print('Using cached online users as fallback');
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to fetch online users: $e'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } finally {
-      _isRefreshing = false;
     }
   }
 
   Future<void> _handleRefresh() async {
-    if (_isRefreshing) return; // Prevent multiple simultaneous refreshes
+    print('Manual refresh triggered');
     
     setState(() {
       _isRefreshing = true;
     });
     
     try {
-      // Clear cache to force fresh data
-      _cachedAnalytics = null;
-      _cachedOnlineUsers = null;
-      _lastDataFetch = null;
+      // Force socket to request fresh data
+      if (_socketConnected) {
+        _socketService?.socket?.emit('get-online-users');
+      }
       
-      // Use timeout to prevent hanging
+      // Clean up any stale online users first
+      await _cleanupStaleUsers();
+      
       await Future.wait([
         _fetchOnlineUsers(),
         _loadAnalytics(),
-      ]).timeout(Duration(seconds: 10));
+      ]);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Data refreshed successfully'),
+            content: Text('Data refreshed - ${onlineUsers.length} students online'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 1),
+            duration: Duration(seconds: 2),
           ),
         );
       }
     } catch (e) {
-      print('Error during refresh: $e');
+      print('Refresh error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Refresh failed: $e'),
-            backgroundColor: Colors.orange,
+            backgroundColor: Colors.red,
             duration: Duration(seconds: 2),
           ),
         );
@@ -358,17 +393,35 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 
-  // Enhanced admin logout method with proper server shutdown
+  Future<void> _cleanupStaleUsers() async {
+    try {
+      if (_apiService != null) {
+        // Call the cleanup endpoint to fix stale online statuses
+        final response = await _apiService!.retryRequest(() async {
+          final authService = Provider.of<AuthService>(context, listen: false);
+          final apiUrl = await authService.serverManager.serverUrl;
+          
+          final response = await http.post(
+            Uri.parse('$apiUrl/api/admin/cleanup-stale-users'),
+            headers: authService.authHeaders,
+          );
+          
+          return response;
+        });
+        
+        print('Stale users cleaned up');
+      }
+    } catch (e) {
+      print('Error cleaning up stale users: $e');
+    }
+  }
+
   Future<void> _handleAdminLogout() async {
     if (_authService == null || _socketService == null || _apiService == null) {
-      print('Services not initialized properly');
       return;
     }
 
     try {
-      print('Admin logout initiated...');
-      
-      // Show confirmation dialog first
       final shouldLogout = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
@@ -380,10 +433,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             children: [
               Text('Are you sure you want to logout as admin?'),
               SizedBox(height: 12),
-              Text(
-                'This will:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+              Text('This will:'),
               Text('• Disconnect all ${onlineUsers.length} online students'),
               Text('• Stop the server'),
               Text('• End all active sessions'),
@@ -403,12 +453,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
         ),
       );
 
-      if (shouldLogout != true) {
-        print('Admin logout cancelled by user');
-        return;
-      }
+      if (shouldLogout != true) return;
       
-      // Show loading dialog
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -419,70 +465,39 @@ class _AdminDashboardState extends State<AdminDashboard> {
               CircularProgressIndicator(),
               SizedBox(height: 16),
               Text('Shutting down server...'),
-              SizedBox(height: 8),
-              Text(
-                'Notifying ${onlineUsers.length} online students',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              ),
             ],
           ),
         ),
       );
 
-      // 1. Emit admin logout event to notify all students
-      if (_socketService!.isConnected) {
-        print('Emitting admin logout event...');
+      // Emit admin logout
+      if (_socketConnected) {
         _socketService!.socket?.emit('admin-logout', {
           'message': 'Admin is logging out. Server will shut down.',
           'timestamp': DateTime.now().toIso8601String(),
-          'onlineStudentCount': onlineUsers.length,
         });
-        
-        // Give socket time to send the message
-        await Future.delayed(Duration(milliseconds: 1000));
+        await Future.delayed(Duration(milliseconds: 500));
       }
 
-      // 2. Call API to send shutdown notification to all students
+      // Send shutdown notification
       try {
-        print('Sending shutdown notification API call...');
-        
-        // This will set all students offline and emit socket events
         await _apiService!.sendAdminShutdownNotification();
-        
-        print('Shutdown notification sent successfully');
       } catch (e) {
         print('Error sending shutdown notification: $e');
-        // Continue with logout even if notification fails
       }
 
-      // 3. Disconnect socket connection
-      print('Disconnecting admin socket...');
       _socketService!.disconnect();
-
-      // 4. Call auth service logout (this will stop the server)
-      print('Calling auth service logout...');
       await _authService!.logout();
 
-      // 5. Close loading dialog if still mounted
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
-      }
-
-      // 6. Navigate to role selection
-      if (mounted) {
         Navigator.of(context).pushReplacementNamed('/role-selection');
       }
-
-      print('Admin logout completed successfully');
       
     } catch (e) {
       print('Error during admin logout: $e');
-      
-      // Close loading dialog if it's open
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
-        
-        // Show error message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Logout failed: $e'),
@@ -495,10 +510,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   void dispose() {
-    // Cancel the refresh timer
+    print('Disposing AdminDashboard');
+    _statusCheckTimer?.cancel();
     _refreshTimer?.cancel();
-    
-    // Now we can safely disconnect using stored references without accessing context
     _socketService?.disconnect();
     super.dispose();
   }
@@ -513,7 +527,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
         actions: [
-          // Refresh button
           IconButton(
             icon: _isRefreshing 
                 ? SizedBox(
@@ -526,7 +539,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   )
                 : Icon(Icons.refresh),
             onPressed: _isRefreshing ? null : _handleRefresh,
-            tooltip: 'Refresh Data',
+            tooltip: 'Force Refresh & Cleanup',
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -534,7 +547,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.admin_panel_settings, size: 20),
+                  Icon(
+                    _serverOnline ? Icons.cloud_done : Icons.cloud_off,
+                    size: 20,
+                    color: _serverOnline ? Colors.green : Colors.red,
+                  ),
                   SizedBox(width: 8),
                   Text(
                     'Admin: ${authService.user?.name}',
@@ -601,16 +618,20 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.green[800],
+                    color: _serverOnline ? Colors.green[800] : Colors.red[800],
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.circle, color: Colors.white, size: 12),
+                      Icon(
+                        _serverOnline ? Icons.circle : Icons.circle_outlined, 
+                        color: Colors.white, 
+                        size: 12
+                      ),
                       SizedBox(width: 6),
                       Text(
-                        'Server Online',
+                        _serverOnline ? 'Server Online' : 'Server Offline',
                         style: TextStyle(color: Colors.white, fontSize: 12),
                       ),
                     ],
@@ -618,6 +639,31 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 ),
               ],
             ),
+            
+            // Server status details
+            if (!_serverOnline)
+              Container(
+                margin: EdgeInsets.only(top: 16),
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red[50],
+                  border: Border.all(color: Colors.red[200]!),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Server offline - Socket: $_socketConnected | Students may not be able to connect',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
             const SizedBox(height: 20),
             
             // Stats cards
@@ -627,7 +673,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   'Online Students',
                   onlineUsers.length.toString(),
                   Icons.people,
-                  Colors.green,
+                  _serverOnline ? Colors.green : Colors.red,
                 ),
                 const SizedBox(width: 16),
                 _buildStatCard(
@@ -638,10 +684,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 ),
                 const SizedBox(width: 16),
                 _buildStatCard(
-                  'Active Sessions',
-                  onlineUsers.length.toString(),
-                  Icons.computer,
-                  Colors.orange,
+                  'Server Status',
+                  _serverOnline ? 'Online' : 'Offline',
+                  _serverOnline ? Icons.check_circle : Icons.error,
+                  _serverOnline ? Colors.green : Colors.red,
                 ),
               ],
             ),
@@ -663,13 +709,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   ),
                 ),
                 SizedBox(width: 8),
-                Text(
-                  'Last updated: ${DateTime.now().toString().substring(11, 19)}',
-                  style: TextStyle(
-                    color: Colors.grey[500],
-                    fontSize: 12,
+                if (_lastDataUpdate != null)
+                  Text(
+                    'Updated: ${DateTime.now().difference(_lastDataUpdate!).inSeconds}s ago',
+                    style: TextStyle(
+                      color: Colors.grey[500],
+                      fontSize: 12,
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -695,6 +742,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             ),
+                          IconButton(
+                            icon: Icon(Icons.cleaning_services, size: 20),
+                            onPressed: () async {
+                              await _cleanupStaleUsers();
+                              _handleRefresh();
+                            },
+                            tooltip: 'Cleanup Stale Users',
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.refresh, size: 20),
+                            onPressed: _handleRefresh,
+                            tooltip: 'Refresh Now',
+                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -718,6 +778,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                       ),
                                     ),
                                     SizedBox(height: 8),
+                                    Text(
+                                      _serverOnline 
+                                          ? 'Waiting for students to connect...' 
+                                          : 'Server offline - check connection',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                    SizedBox(height: 16),
                                     ElevatedButton.icon(
                                       onPressed: _handleRefresh,
                                       icon: Icon(Icons.refresh),
@@ -737,9 +807,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                   
                                   return ListTile(
                                     leading: CircleAvatar(
-                                      backgroundColor: Colors.green,
+                                      backgroundColor: user.isOnline ? Colors.green : Colors.grey,
                                       child: Text(
-                                        user.name[0].toUpperCase(),
+                                        user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
                                         style: TextStyle(color: Colors.white),
                                       ),
                                     ),
@@ -755,32 +825,36 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                               fontSize: 12,
                                               color: Colors.grey[600],
                                             ),
-                                          )
-                                        else
-                                          Text(
-                                            'Last active: Unknown',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey[600],
-                                            ),
                                           ),
+                                        Text(
+                                          'DB Status: ${user.isOnline ? "Online" : "Offline"}',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: user.isOnline ? Colors.green : Colors.red,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                     trailing: Container(
                                       padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: Colors.green[100],
+                                        color: user.isOnline ? Colors.green[100] : Colors.grey[100],
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(Icons.circle, color: Colors.green, size: 8),
+                                          Icon(
+                                            Icons.circle, 
+                                            color: user.isOnline ? Colors.green : Colors.grey, 
+                                            size: 8
+                                          ),
                                           SizedBox(width: 4),
                                           Text(
-                                            'Online',
+                                            user.isOnline ? 'Online' : 'Offline',
                                             style: TextStyle(
-                                              color: Colors.green[800],
+                                              color: user.isOnline ? Colors.green[800] : Colors.grey[600],
                                               fontSize: 12,
                                               fontWeight: FontWeight.bold,
                                             ),

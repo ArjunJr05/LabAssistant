@@ -272,95 +272,9 @@ router.get('/exercises', auth, adminOnly, async (req, res) => {
   }
 });
 
-// Enhanced get online users route for routes/admin.js
-router.get('/online-users', auth, adminOnly, async (req, res) => {
-  try {
-    console.log('Admin requesting online users...');
-    
-    // Get users marked as online in database
-    const result = await pool.query(`
-      SELECT 
-        id, name, enroll_number, year, section, batch, role, 
-        is_online, last_active, created_at
-      FROM users
-      WHERE role = 'student' AND is_online = true
-      ORDER BY last_active DESC
-    `);
-    
-    console.log(`Found ${result.rows.length} students marked as online in database`);
-    
-    const onlineUsers = result.rows.map(user => {
-      console.log(`  - ${user.name} (${user.enroll_number}) - Last active: ${user.last_active}`);
-      
-      return {
-        id: user.id,
-        name: user.name,
-        enrollNumber: user.enroll_number,
-        year: user.year,
-        section: user.section,
-        batch: user.batch,
-        role: user.role,
-        isOnline: user.is_online,
-        lastActive: user.last_active,
-        status: 'online'
-      };
-    });
-    
-    // Also check socket connections for comparison
-    const io = req.app.get('socketio') || req.app.get('io');
-    const socketConnections = io ? io.sockets.sockets.size : 0;
-    
-    console.log(`Returning ${onlineUsers.length} online users. Socket connections: ${socketConnections}`);
-    
-    // Return the array directly (not wrapped in an object)
-    res.json(onlineUsers);
-    
-  } catch (error) {
-    console.error('Error fetching online users:', error);
-    res.status(500).json({ 
-      message: 'Server error',
-      error: error.message 
-    });
-  }
-});
 
-// Optional: Add a cleanup route to fix stale online statuses
-router.post('/cleanup-stale-users', auth, adminOnly, async (req, res) => {
-  try {
-    console.log('Cleaning up stale online users...');
-    
-    // Mark users as offline if they haven't been active for more than 5 minutes
-    const result = await pool.query(`
-      UPDATE users 
-      SET is_online = false, updated_at = NOW()
-      WHERE is_online = true 
-      AND role = 'student'
-      AND last_active < NOW() - INTERVAL '5 minutes'
-      RETURNING name, enroll_number, last_active
-    `);
-    
-    console.log(`Cleaned up ${result.rows.length} stale users`);
-    
-    if (result.rows.length > 0) {
-      result.rows.forEach(user => {
-        console.log(`  - Marked ${user.name} (${user.enroll_number}) as offline (last active: ${user.last_active})`);
-      });
-    }
-    
-    res.json({
-      success: true,
-      message: `Cleaned up ${result.rows.length} stale users`,
-      cleanedUsers: result.rows
-    });
-    
-  } catch (error) {
-    console.error('Error cleaning up stale users:', error);
-    res.status(500).json({ 
-      message: 'Server error during cleanup',
-      error: error.message 
-    });
-  }
-});
+
+
 
 // Get specific exercise for admin (with both visible and hidden test cases)
 router.get('/exercises/:exerciseId', auth, adminOnly, async (req, res) => {
@@ -524,7 +438,229 @@ router.post('/shutdown-notification', auth, adminOnly, async (req, res) => {
     });
   }
 });
+// Enhanced get online users route with strict database filtering
+router.get('/online-users', auth, adminOnly, async (req, res) => {
+  try {
+    console.log('Admin requesting online users...');
+    
+    // Get ONLY users that are actually marked as online in database
+    const result = await pool.query(`
+      SELECT 
+        id, name, enroll_number, year, section, batch, role, 
+        is_online, last_active, created_at
+      FROM users
+      WHERE role = 'student' 
+        AND is_online = true
+        AND last_active > NOW() - INTERVAL '10 minutes'
+      ORDER BY last_active DESC
+    `);
+    
+    console.log(`Database query returned ${result.rows.length} students marked as online`);
+    
+    const onlineUsers = result.rows.map(user => {
+      console.log(`  - ${user.name} (${user.enroll_number}) - Online: ${user.is_online} - Last active: ${user.last_active}`);
+      
+      return {
+        id: user.id,
+        name: user.name,
+        enrollNumber: user.enroll_number,
+        year: user.year,
+        section: user.section,
+        batch: user.batch,
+        role: user.role,
+        isOnline: user.is_online, // This should always be true due to WHERE clause
+        lastActive: user.last_active,
+        status: 'online'
+      };
+    });
+    
+    // Also check socket connections for comparison
+    const io = req.app.get('socketio') || req.app.get('io');
+    const socketConnections = io ? io.sockets.sockets.size : 0;
+    
+    console.log(`Returning ${onlineUsers.length} verified online users. Socket connections: ${socketConnections}`);
+    
+    res.json(onlineUsers);
+    
+  } catch (error) {
+    console.error('Error fetching online users:', error);
+    res.status(500).json({ 
+      message: 'Server error',
+      error: error.message 
+    });
+  }
+});
 
+// Enhanced cleanup route to fix stale online statuses
+router.post('/cleanup-stale-users', auth, adminOnly, async (req, res) => {
+  try {
+    console.log('Cleaning up stale online users...');
+    
+    // Mark users as offline if they haven't been active for more than 5 minutes
+    const result = await pool.query(`
+      UPDATE users 
+      SET is_online = false, updated_at = NOW()
+      WHERE is_online = true 
+      AND role = 'student'
+      AND (last_active IS NULL OR last_active < NOW() - INTERVAL '5 minutes')
+      RETURNING name, enroll_number, last_active, is_online
+    `);
+    
+    console.log(`Cleaned up ${result.rows.length} stale users`);
+    
+    if (result.rows.length > 0) {
+      result.rows.forEach(user => {
+        console.log(`  - Marked ${user.name} (${user.enroll_number}) as offline (last active: ${user.last_active || 'never'})`);
+      });
+      
+      // Emit socket update to notify admin of cleanup
+      const io = req.app.get('socketio') || req.app.get('io');
+      if (io) {
+        result.rows.forEach(user => {
+          io.emit('user-disconnected', {
+            enrollNumber: user.enroll_number,
+            name: user.name,
+            reason: 'cleanup_stale'
+          });
+        });
+      }
+    }
+    
+    // Get current online users after cleanup
+    const currentOnline = await pool.query(`
+      SELECT COUNT(*) as count 
+      FROM users 
+      WHERE role = 'student' AND is_online = true
+    `);
+    
+    res.json({
+      success: true,
+      message: `Cleaned up ${result.rows.length} stale users`,
+      cleanedUsers: result.rows,
+      currentOnlineCount: parseInt(currentOnline.rows[0].count)
+    });
+    
+  } catch (error) {
+    console.error('Error cleaning up stale users:', error);
+    res.status(500).json({ 
+      message: 'Server error during cleanup',
+      error: error.message 
+    });
+  }
+});
+
+// Add a debug endpoint to check database vs socket status
+router.get('/debug-status', auth, adminOnly, async (req, res) => {
+  try {
+    console.log('Admin requesting debug status...');
+    
+    // Get all students with their online status
+    const allStudents = await pool.query(`
+      SELECT 
+        id, name, enroll_number, year, section, batch, 
+        is_online, last_active, created_at
+      FROM users
+      WHERE role = 'student'
+      ORDER BY name
+    `);
+    
+    // Get socket connections
+    const io = req.app.get('socketio') || req.app.get('io');
+    const socketConnections = io ? Array.from(io.sockets.sockets.keys()) : [];
+    
+    // Separate online and offline users
+    const onlineInDB = allStudents.rows.filter(user => user.is_online);
+    const offlineInDB = allStudents.rows.filter(user => !user.is_online);
+    
+    res.json({
+      database: {
+        totalStudents: allStudents.rows.length,
+        onlineCount: onlineInDB.length,
+        offlineCount: offlineInDB.length,
+        onlineUsers: onlineInDB.map(user => ({
+          name: user.name,
+          enrollNumber: user.enroll_number,
+          lastActive: user.last_active,
+          isOnline: user.is_online
+        })),
+        offlineUsers: offlineInDB.map(user => ({
+          name: user.name,
+          enrollNumber: user.enroll_number,
+          lastActive: user.last_active,
+          isOnline: user.is_online
+        }))
+      },
+      socket: {
+        totalConnections: socketConnections.length,
+        connectionIds: socketConnections
+      },
+      serverTime: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Error getting debug status:', error);
+    res.status(500).json({ 
+      message: 'Debug status error',
+      error: error.message 
+    });
+  }
+});
+
+// Force update user online status endpoint
+router.post('/force-user-status', auth, adminOnly, async (req, res) => {
+  try {
+    const { enrollNumber, isOnline } = req.body;
+    
+    if (!enrollNumber) {
+      return res.status(400).json({ message: 'Enroll number required' });
+    }
+    
+    console.log(`Force updating user ${enrollNumber} to ${isOnline ? 'online' : 'offline'}`);
+    
+    const result = await pool.query(
+      `UPDATE users 
+       SET is_online = $1, last_active = NOW(), updated_at = NOW()
+       WHERE enroll_number = $2 AND role = 'student'
+       RETURNING name, enroll_number, is_online`,
+      [isOnline, enrollNumber]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+    
+    const user = result.rows[0];
+    
+    // Emit socket event
+    const io = req.app.get('socketio') || req.app.get('io');
+    if (io) {
+      const eventName = isOnline ? 'user-connected' : 'user-disconnected';
+      io.emit(eventName, {
+        enrollNumber: user.enroll_number,
+        name: user.name,
+        isOnline: user.is_online,
+        reason: 'admin_force_update'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: `User ${user.name} status updated to ${user.is_online ? 'online' : 'offline'}`,
+      user: {
+        name: user.name,
+        enrollNumber: user.enroll_number,
+        isOnline: user.is_online
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error force updating user status:', error);
+    res.status(500).json({ 
+      message: 'Error updating user status',
+      error: error.message 
+    });
+  }
+});
 // Get all students (for admin monitoring)
 router.get('/students', auth, adminOnly, async (req, res) => {
   try {

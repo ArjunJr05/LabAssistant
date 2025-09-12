@@ -1,9 +1,10 @@
 // lib/services/socket_service.dart
-// Complete enhanced socket service with admin logout and shutdown handling
+// Optimized socket service with batch updates and reduced latency
 
 import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'config_service.dart';
+import 'dart:async';
 
 class SocketService extends ChangeNotifier {
   IO.Socket? socket;
@@ -22,9 +23,15 @@ class SocketService extends ChangeNotifier {
   Function(Map<String, dynamic> data)? onAdminShutdown;
   Function(Map<String, dynamic> data)? onForceDisconnect;
   
-  // Student specific callbacks
+  // Student specific callbacks - Optimized for batch updates
   Function(List<dynamic> users)? onOnlineUsersUpdate;
+  Function(List<dynamic> updates)? onUserStatusBatch; // New batch callback
   Function(Map<String, dynamic> data)? onUserStatusChanged;
+
+  // Batch update management for reduced latency
+  Timer? _batchTimer;
+  final List<Map<String, dynamic>> _pendingUserUpdates = [];
+  static const Duration _batchDelay = Duration(milliseconds: 100);
 
   bool get isConnected => _isConnected;
   String? get currentUserRole => _currentUserRole;
@@ -32,12 +39,13 @@ class SocketService extends ChangeNotifier {
   String? get currentUserName => _currentUserName;
 
   void _safeNotifyListeners() {
-    // Only notify listeners if we're not in a build phase
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_disposed) {
-        notifyListeners();
-      }
-    });
+    if (!_disposed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_disposed) {
+          notifyListeners();
+        }
+      });
+    }
   }
 
   Future<void> connect() async {
@@ -53,13 +61,14 @@ class SocketService extends ChangeNotifier {
       socket = IO.io(serverUrl, <String, dynamic>{
         'transports': ['websocket'],
         'autoConnect': false,
-        'timeout': 20000,
+        'timeout': 10000, // Reduced from 20000
         'reconnection': true,
-        'reconnectionAttempts': 5,
-        'reconnectionDelay': 1000,
+        'reconnectionAttempts': 3, // Reduced from 5
+        'reconnectionDelay': 500, // Reduced from 1000
+        'forceNew': true,
       });
 
-      _setupSocketListeners();
+      _setupOptimizedSocketListeners();
       socket!.connect();
       
     } catch (e) {
@@ -69,7 +78,7 @@ class SocketService extends ChangeNotifier {
     }
   }
 
-  void _setupSocketListeners() {
+  void _setupOptimizedSocketListeners() {
     if (socket == null) return;
 
     // Connection events
@@ -83,6 +92,7 @@ class SocketService extends ChangeNotifier {
     socket!.on('disconnect', (reason) {
       print('Disconnected from socket server. Reason: $reason');
       _isConnected = false;
+      _flushPendingUpdates(); // Flush any pending updates
       _safeNotifyListeners();
       onDisconnected?.call();
     });
@@ -111,7 +121,7 @@ class SocketService extends ChangeNotifier {
       _safeNotifyListeners();
     });
 
-    // Admin shutdown events - CRITICAL for student apps
+    // CRITICAL: Admin shutdown events
     socket!.on('admin-shutdown', (data) {
       print('RECEIVED ADMIN SHUTDOWN NOTIFICATION: $data');
       
@@ -122,18 +132,17 @@ class SocketService extends ChangeNotifier {
         print('Admin shutdown reason: $reason');
         print('Shutdown message: $message');
         
-        // Call callback if registered
         onAdminShutdown?.call(data);
         
-        // Auto-disconnect after receiving shutdown notification
-        Future.delayed(Duration(seconds: 2), () {
+        // Immediate disconnect for admin shutdown
+        Future.delayed(Duration(milliseconds: 500), () {
           print('Auto-disconnecting due to admin shutdown...');
           disconnect();
         });
       }
     });
 
-    // Force disconnect event - Server forcing client to disconnect
+    // Force disconnect event
     socket!.on('force-disconnect', (data) {
       print('RECEIVED FORCE DISCONNECT: $data');
       
@@ -144,71 +153,127 @@ class SocketService extends ChangeNotifier {
         print('Force disconnect reason: $reason');
         print('Force disconnect message: $message');
         
-        // Call callback if registered
         onForceDisconnect?.call(data);
-        
-        // Immediately disconnect
         disconnect();
       }
     });
 
-    // User management events
+    // OPTIMIZED: Batch user status updates
+    socket!.on('user-status-batch', (data) {
+      print('Received batch user status update');
+      if (data is List) {
+        onUserStatusBatch?.call(data);
+      }
+    });
+
+    // OPTIMIZED: Bulk online users update
+    socket!.on('online-users-bulk', (data) {
+      print('Received bulk online users update: ${data is List ? data.length : 0} users');
+      if (data is List) {
+        onOnlineUsersUpdate?.call(data);
+      }
+    });
+
+    // Individual user events - now batched for admin dashboard
     socket!.on('user-connected', (data) {
-      print('User connected: $data');
+      print('User connected: ${data?['name']}');
       if (data is Map<String, dynamic>) {
-        onUserStatusChanged?.call({
+        _addToBatch({
           ...data,
-          'action': 'connected'
+          'action': 'connected',
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
         });
       }
     });
 
     socket!.on('user-disconnected', (data) {
-      print('User disconnected: $data');
+      print('User disconnected: ${data?['name']}');
       if (data is Map<String, dynamic>) {
-        onUserStatusChanged?.call({
+        _addToBatch({
           ...data,
-          'action': 'disconnected'
+          'action': 'disconnected',
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
         });
       }
     });
 
+    // Legacy support - still call individual callback for backward compatibility
     socket!.on('online-users', (data) {
-      print('Online users update: $data');
+      print('Online users update (legacy)');
       if (data is List) {
         onOnlineUsersUpdate?.call(data);
       }
     });
 
     socket!.on('user-status-update', (data) {
-      print('User status update: $data');
+      print('User status update (legacy)');
       if (data is List) {
         onOnlineUsersUpdate?.call(data);
       }
     });
 
-    // Student activity monitoring
+    // Student activity monitoring - optimized
     socket!.on('student-activity', (data) {
-      print('Student activity: $data');
+      if (data != null) {
+        print('Student activity received');
+      }
     });
 
     socket!.on('student-screen', (data) {
-      print('Student screen share: ${data.toString().substring(0, 100)}...');
+      if (data != null) {
+        print('Student screen share received');
+      }
     });
 
     // Admin connection events
     socket!.on('admin-connected', (data) {
-      print('Admin connected to server: $data');
+      print('Admin connected to server: ${data?['name']}');
     });
 
-    // Heartbeat
+    // Optimized heartbeat response
     socket!.on('pong', (data) {
-      // Handle pong response for keepalive
+      // Handle pong response for keepalive - no logging to reduce noise
     });
   }
 
+  // Batch update management for reduced UI rebuilds
+  void _addToBatch(Map<String, dynamic> update) {
+    _pendingUserUpdates.add(update);
+    
+    // Cancel existing timer
+    _batchTimer?.cancel();
+    
+    // Set new timer
+    _batchTimer = Timer(_batchDelay, () {
+      _flushPendingUpdates();
+    });
+  }
+
+  void _flushPendingUpdates() {
+    if (_pendingUserUpdates.isNotEmpty) {
+      final updates = List<Map<String, dynamic>>.from(_pendingUserUpdates);
+      _pendingUserUpdates.clear();
+      
+      print('Flushing ${updates.length} batched user updates');
+      
+      // Call batch callback if available
+      onUserStatusBatch?.call(updates);
+      
+      // Also call individual callbacks for backward compatibility
+      for (final update in updates) {
+        onUserStatusChanged?.call(update);
+      }
+    }
+    _batchTimer = null;
+  }
+
+  
   void disconnect() {
     print('Disconnecting socket...');
+    
+    // Flush any pending updates before disconnecting
+    _flushPendingUpdates();
+    _batchTimer?.cancel();
     
     if (socket?.connected == true) {
       // Emit logout event before disconnecting if user info is available
@@ -244,7 +309,7 @@ class SocketService extends ChangeNotifier {
     _currentUserRole = role;
   }
 
-  // User authentication events
+  // OPTIMIZED: User authentication events with minimal data
   void emitUserLogin(Map<String, dynamic> userData) {
     if (!_isConnected || socket == null) {
       print('Cannot emit user login - socket not connected');
@@ -260,17 +325,26 @@ class SocketService extends ChangeNotifier {
       userData['role'] ?? 'student'
     );
     
-    socket!.emit('user-login', userData);
+    // Emit with timestamp for latency tracking
+    socket!.emit('user-login', {
+      ...userData,
+      'clientTimestamp': DateTime.now().millisecondsSinceEpoch,
+    });
   }
 
   void emitUserLogout(Map<String, dynamic> userData) {
-    if (!_isConnected || socket == null) {
-      print('Cannot emit user logout - socket not connected');
+    if (socket == null) {
+      print('Cannot emit user logout - socket not available');
       return;
     }
     
     print('Emitting user logout: ${userData['name']} (${userData['role']})');
-    socket!.emit('user-logout', userData);
+    
+    // Emit even if not connected for cleanup
+    socket!.emit('user-logout', {
+      ...userData,
+      'clientTimestamp': DateTime.now().millisecondsSinceEpoch,
+    });
     
     // Clear stored user info after logout
     _clearUserInfo();
@@ -292,7 +366,10 @@ class SocketService extends ChangeNotifier {
       'admin'
     );
     
-    socket!.emit('admin-login', adminData);
+    socket!.emit('admin-login', {
+      ...adminData,
+      'clientTimestamp': DateTime.now().millisecondsSinceEpoch,
+    });
   }
 
   void emitAdminLogout(Map<String, dynamic> adminData) {
@@ -302,20 +379,26 @@ class SocketService extends ChangeNotifier {
     }
     
     print('Emitting admin logout: ${adminData['name']} - This will trigger server shutdown');
-    socket!.emit('admin-logout', adminData);
+    socket!.emit('admin-logout', {
+      ...adminData,
+      'clientTimestamp': DateTime.now().millisecondsSinceEpoch,
+    });
     
     // Clear stored admin info after logout
     _clearUserInfo();
   }
 
-  // Student activity events
+  // Optimized activity events
   void emitCodeExecution(Map<String, dynamic> data) {
     if (!_isConnected || socket == null) {
       print('Cannot emit code execution - socket not connected');
       return;
     }
     
-    socket!.emit('code-execution', data);
+    socket!.emit('code-execution', {
+      ...data,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
   }
 
   void emitScreenShare(String screenData) {
@@ -324,7 +407,11 @@ class SocketService extends ChangeNotifier {
       return;
     }
     
-    socket!.emit('screen-share', screenData);
+    socket!.emit('screen-share', {
+      'data': screenData,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'user': _currentUserEnrollNumber,
+    });
   }
 
   void emitUserActivity(Map<String, dynamic> activityData) {
@@ -333,10 +420,13 @@ class SocketService extends ChangeNotifier {
       return;
     }
     
-    socket!.emit('user-activity', activityData);
+    socket!.emit('user-activity', {
+      ...activityData,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
   }
 
-  // Request online users list
+  // Request online users list with immediate response preference
   void requestOnlineUsers() {
     if (!_isConnected || socket == null) {
       print('Cannot request online users - socket not connected');
@@ -344,23 +434,26 @@ class SocketService extends ChangeNotifier {
     }
     
     print('Requesting online users from server');
-    socket!.emit('get-online-users');
+    socket!.emit('get-online-users', {
+      'requestId': DateTime.now().millisecondsSinceEpoch,
+      'preferBulk': true, // Indicate preference for bulk response
+    });
   }
 
-  // Heartbeat/keepalive
+  // Optimized heartbeat with reduced frequency
   void sendHeartbeat() {
     if (!_isConnected || socket == null) {
       return;
     }
     
     socket!.emit('ping', {
-      'timestamp': DateTime.now().toIso8601String(),
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
       'userRole': _currentUserRole,
       'enrollNumber': _currentUserEnrollNumber,
     });
   }
 
-  // Callback registration methods
+  // ENHANCED: Callback registration methods with batch support
   void setOnConnectedCallback(Function() callback) {
     onConnected = callback;
   }
@@ -389,6 +482,11 @@ class SocketService extends ChangeNotifier {
     onUserStatusChanged = callback;
   }
 
+  // NEW: Batch update callback registration
+  void setOnUserStatusBatchCallback(Function(List<dynamic> updates) callback) {
+    onUserStatusBatch = callback;
+  }
+
   // Utility methods
   bool get isAdmin => _currentUserRole == 'admin';
   bool get isStudent => _currentUserRole == 'student';
@@ -407,16 +505,19 @@ class SocketService extends ChangeNotifier {
     return _isConnected && socket?.connected == true;
   }
 
-  // Force reconnection
+  // Optimized reconnection
   Future<void> forceReconnect() async {
     print('Forcing socket reconnection...');
+    
+    // Flush pending updates before reconnecting
+    _flushPendingUpdates();
     
     if (socket?.connected == true) {
       socket!.disconnect();
     }
     
-    // Wait a moment before reconnecting
-    await Future.delayed(Duration(milliseconds: 500));
+    // Shorter wait time
+    await Future.delayed(Duration(milliseconds: 200));
     
     if (socket != null) {
       socket!.connect();
@@ -425,7 +526,7 @@ class SocketService extends ChangeNotifier {
     }
   }
 
-  // Get connection statistics
+  // Enhanced connection statistics
   Map<String, dynamic> getConnectionStats() {
     return {
       'isConnected': _isConnected,
@@ -437,7 +538,20 @@ class SocketService extends ChangeNotifier {
       },
       'socketConnected': socket?.connected ?? false,
       'hasSocket': socket != null,
+      'pendingUpdates': _pendingUserUpdates.length,
+      'batchTimerActive': _batchTimer?.isActive ?? false,
     };
+  }
+
+  // Performance monitoring
+  int getPendingUpdateCount() {
+    return _pendingUserUpdates.length;
+  }
+
+  void clearPendingUpdates() {
+    _pendingUserUpdates.clear();
+    _batchTimer?.cancel();
+    _batchTimer = null;
   }
 
   @override
@@ -447,6 +561,10 @@ class SocketService extends ChangeNotifier {
     // Mark as disposed to prevent further notifications
     _disposed = true;
     
+    // Flush any pending updates
+    _flushPendingUpdates();
+    _batchTimer?.cancel();
+    
     // Clear all callbacks
     onConnected = null;
     onDisconnected = null;
@@ -455,6 +573,7 @@ class SocketService extends ChangeNotifier {
     onForceDisconnect = null;
     onOnlineUsersUpdate = null;
     onUserStatusChanged = null;
+    onUserStatusBatch = null;
     
     // Disconnect socket without notifying listeners
     if (socket?.connected == true) {
@@ -465,12 +584,11 @@ class SocketService extends ChangeNotifier {
     _isConnected = false;
     _clearUserInfo();
     
-    // Don't call notifyListeners() in dispose as it can cause errors
     super.dispose();
     print('SocketService disposed');
   }
 
-  // Debug method to print current state
+  // Enhanced debug method
   void debugPrintState() {
     print('\n=== SOCKET SERVICE DEBUG INFO ===');
     print('Connected: $_isConnected');
@@ -480,6 +598,8 @@ class SocketService extends ChangeNotifier {
     print('Socket ID: ${socket?.id}');
     print('Current user: $_currentUserName ($_currentUserRole)');
     print('Enroll number: $_currentUserEnrollNumber');
+    print('Pending updates: ${_pendingUserUpdates.length}');
+    print('Batch timer active: ${_batchTimer?.isActive ?? false}');
     print('================================\n');
   }
 }

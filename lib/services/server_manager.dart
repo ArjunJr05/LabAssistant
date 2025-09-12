@@ -25,20 +25,14 @@ class ServerManager extends ChangeNotifier {
     try {
       if (_serverProcess != null) {
         print('🔄 Server process already running');
-        final isRunning = await checkServerStatus();
-        if (isRunning) {
-          return true;
-        } else {
-          // Process exists but server not responding, clean up
-          await stopServer();
-        }
+        return true;
       }
       
       print('🚀 Starting Node.js server...');
       
       final backendPath = Platform.isWindows 
-          ? r'C:\Users\arjun\labassistant\backend'
-          : '/Users/arjun/labassistant/backend';
+          ? r'C:\Users\user\labassistant\backend'
+          : '/Users/user/labassistant/backend';
       
       // Check if backend directory exists
       final backendDir = Directory(backendPath);
@@ -47,30 +41,33 @@ class ServerManager extends ChangeNotifier {
         return false;
       }
       
-      // Optimized Node.js/npm check with caching
+      // Check if Node.js and npm are available
       final hasNodeAndNpm = await _checkNodeAndNpm();
       if (!hasNodeAndNpm) {
         print('❌ Node.js or npm not found. Please install Node.js from https://nodejs.org/');
         return false;
       }
       
-      // Kill any existing Node.js processes to prevent conflicts
-      await killExistingNodeProcesses();
-      
-      // Try to start the server with optimized approach
-      _serverProcess = await _startServerProcessOptimized(backendPath);
+      // Try to start the server with different approaches
+      _serverProcess = await _startServerProcess(backendPath);
       
       if (_serverProcess != null) {
         print('✅ Server process started with PID: ${_serverProcess!.pid}');
         
-        // Optimized output handling with buffering
-        _setupProcessListeners();
+        // Listen to process output for debugging
+        _serverProcess!.stdout.transform(utf8.decoder).listen((data) {
+          print('📡 Server stdout: $data');
+        });
         
-        // Reduced wait time and intelligent status checking
-        await Future.delayed(const Duration(seconds: 2));
+        _serverProcess!.stderr.transform(utf8.decoder).listen((data) {
+          print('⚠️ Server stderr: $data');
+        });
         
-        // Check if server is actually running with retry
-        final isRunning = await _checkServerStatusWithRetry();
+        // Wait a moment for server to start
+        await Future.delayed(const Duration(seconds: 3));
+        
+        // Check if server is actually running
+        final isRunning = await checkServerStatus();
         if (isRunning) {
           _isServerRunning = true;
           notifyListeners();
@@ -86,7 +83,6 @@ class ServerManager extends ChangeNotifier {
       return false;
     } catch (e) {
       print('💥 Error starting server: $e');
-      await stopServer(); // Cleanup on error
       return false;
     }
   }
@@ -131,7 +127,7 @@ class ServerManager extends ChangeNotifier {
     }
   }
   
-  // Optimized server status check with retry logic
+  // Check if server is online by hitting the status endpoint
   Future<bool> checkServerStatus() async {
     try {
       final url = await serverUrl;
@@ -140,7 +136,7 @@ class ServerManager extends ChangeNotifier {
       final response = await http.get(
         Uri.parse('$url/api/status'),
         headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 3)); // Reduced timeout
+      ).timeout(const Duration(seconds: 5));
       
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -165,111 +161,52 @@ class ServerManager extends ChangeNotifier {
     }
   }
   
-  // Enhanced status check with intelligent retry
-  Future<bool> _checkServerStatusWithRetry() async {
-    const maxRetries = 3;
-    const retryDelay = Duration(seconds: 1);
-    
-    for (int i = 0; i < maxRetries; i++) {
-      final isOnline = await checkServerStatus();
-      if (isOnline) {
-        return true;
-      }
-      
-      if (i < maxRetries - 1) {
-        print('⏳ Retrying server status check in ${retryDelay.inSeconds}s...');
-        await Future.delayed(retryDelay);
-      }
-    }
-    
-    return false;
-  }
-  
-  // Optimized process output handling
-  void _setupProcessListeners() {
-    if (_serverProcess == null) return;
-    
-    // Buffer output to reduce UI blocking
-    _serverProcess!.stdout.transform(utf8.decoder).listen(
-      (data) {
-        // Only log important messages to reduce noise
-        if (data.contains('Server running') || data.contains('error') || data.contains('listening')) {
-          print('📡 Server: $data');
-        }
-      },
-      onError: (error) => print('⚠️ Server stdout error: $error'),
-    );
-    
-    _serverProcess!.stderr.transform(utf8.decoder).listen(
-      (data) {
-        print('⚠️ Server stderr: $data');
-      },
-      onError: (error) => print('⚠️ Server stderr error: $error'),
-    );
-  }
-  
-  // Optimized server process startup with intelligent approach selection
-  Future<Process?> _startServerProcessOptimized(String backendPath) async {
+  // Try different approaches to start the server process
+  Future<Process?> _startServerProcess(String backendPath) async {
     if (Platform.isWindows) {
-      // Prioritized approaches based on success rate
+      // Try multiple approaches on Windows
       final approaches = [
-        // Most reliable approach first
-        () => Process.start('cmd', ['/c', 'npm', 'start'], 
-            workingDirectory: backendPath, mode: ProcessStartMode.normal),
+        // Approach 1: Use cmd.exe
+      () => Process.start('cmd', ['/c', 'npm', 'start'], 
+        workingDirectory: backendPath, mode: ProcessStartMode.normal),
         
-        // Fallback approaches
+        // Approach 2: Use PowerShell
+        () => Process.start('powershell', ['-Command', 'npm start'], 
+            workingDirectory: backendPath, mode: ProcessStartMode.detached),
+        
+        // Approach 3: Try npm.cmd directly
         () => Process.start('npm.cmd', ['start'], 
             workingDirectory: backendPath, mode: ProcessStartMode.detached),
         
-        () => Process.start('powershell', ['-Command', 'npm start'], 
+        // Approach 4: Try with full path to npm
+        () => Process.start('C:\\Program Files\\nodejs\\npm.cmd', ['start'], 
             workingDirectory: backendPath, mode: ProcessStartMode.detached),
       ];
       
-      // Try approaches with timeout to prevent hanging
       for (int i = 0; i < approaches.length; i++) {
         try {
-          print('🔧 Trying optimized approach ${i + 1}...');
-          final process = await approaches[i]().timeout(Duration(seconds: 10));
+          print('🔧 Trying approach ${i + 1} to start npm...');
+          final process = await approaches[i]();
           print('✅ Successfully started with approach ${i + 1}');
           return process;
         } catch (e) {
           print('❌ Approach ${i + 1} failed: $e');
-          if (i < approaches.length - 1) {
-            await Future.delayed(Duration(milliseconds: 500)); // Brief delay between attempts
+          if (i == approaches.length - 1) {
+            print('💥 All approaches failed on Windows');
           }
         }
       }
-      print('💥 All optimized approaches failed on Windows');
       return null;
     } else {
-      // Unix-like systems with timeout
+      // Unix-like systems
       try {
         print('🔧 Starting npm on Unix-like system...');
         return await Process.start('npm', ['start'], 
-            workingDirectory: backendPath, mode: ProcessStartMode.detached)
-            .timeout(Duration(seconds: 10));
+            workingDirectory: backendPath, mode: ProcessStartMode.detached);
       } catch (e) {
         print('❌ Failed to start npm on Unix: $e');
         return null;
       }
-    }
-  }
-
-  // Kill existing Node.js processes to prevent conflicts
-  Future<void> killExistingNodeProcesses() async {
-    try {
-      if (Platform.isWindows) {
-        // Kill any existing node.exe processes
-        await Process.run('taskkill', ['/F', '/IM', 'node.exe'], runInShell: true);
-        print('🧹 Cleaned up existing Node.js processes');
-      } else {
-        // Unix-like systems
-        await Process.run('pkill', ['-f', 'node'], runInShell: true);
-        print('🧹 Cleaned up existing Node.js processes');
-      }
-    } catch (e) {
-      // Ignore errors - processes might not exist
-      print('ℹ️ No existing Node.js processes to clean up');
     }
   }
 
@@ -312,23 +249,26 @@ class ServerManager extends ChangeNotifier {
     }
   }
 
-  // Enhanced cleanup method to prevent memory leaks
-  Future<void> cleanup() async {
+  // Kill any existing Node.js processes (cleanup utility)
+  Future<void> killExistingNodeProcesses() async {
     try {
-      await stopServer();
-      await killExistingNodeProcesses();
-      _serverProcess = null;
-      _isServerRunning = false;
-      print('🧹 ServerManager cleanup completed');
+      if (Platform.isWindows) {
+        // Kill Node.js processes on Windows
+        await Process.run('taskkill', ['/F', '/IM', 'node.exe']);
+        print('🧹 Killed existing Node.js processes on Windows');
+      } else {
+        // Kill Node.js processes on Unix-like systems
+        await Process.run('pkill', ['-f', 'node']);
+        print('🧹 Killed existing Node.js processes on Unix');
+      }
     } catch (e) {
-      print('⚠️ Error during ServerManager cleanup: $e');
+      print('ℹ️ No existing Node.js processes to kill or error: $e');
     }
   }
-
+  
   @override
   void dispose() {
-    // Don't await in dispose, but ensure cleanup happens
-    cleanup();
+    stopServer();
     super.dispose();
   }
 }

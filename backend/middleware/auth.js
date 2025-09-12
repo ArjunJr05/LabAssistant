@@ -5,7 +5,6 @@ const JWT_SECRET = '1341ae2e12f9d31a0cc42a5225b885012f16583b997b49133a68d148e03e
 
 module.exports = (req, res, next) => {
   try {
-    // Get token from Authorization header
     const authHeader = req.header('Authorization');
     
     if (!authHeader) {

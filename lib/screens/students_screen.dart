@@ -55,36 +55,65 @@ class _StudentDashboardState extends State<StudentDashboard> {
     }
   }
 
-  void _initializeSocket() {
-    if (_socketService == null || _authService == null) return;
+  // Add this to your student dashboard's _initializeSocket method
+
+void _initializeSocket() {
+  if (_socketService == null || _authService == null) return;
+  
+  print('🔌 Student connecting to socket...');
+  _socketService!.connect();
+  
+  // Wait for connection, then emit login
+  _socketService!.socket?.on('connect', (_) {
+    print('✅ Student socket connected, emitting login...');
     
-    _socketService!.connect();
-    _socketService!.socket?.emit('user-login', {
+    // Emit student login with all required data
+    _socketService!.socket?.emit('student-login', {
       'enrollNumber': _authService!.user?.enrollNumber,
       'name': _authService!.user?.name,
       'role': _authService!.user?.role,
+      'year': _authService!.user?.year,
+      'section': _authService!.user?.section,
+      'batch': _authService!.user?.batch,
+      'id': _authService!.user?.id,
+      'timestamp': DateTime.now().toIso8601String(),
     });
     
-    // Listen for admin shutdown events
-    _socketService!.socket?.on('admin-shutdown', (data) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Admin has logged out. Redirecting to login...'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
-        
-        // Redirect to role selection after a short delay
-        Future.delayed(Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.of(context).pushReplacementNamed('/role-selection');
-          }
-        });
-      }
-    });
-  }
+    print('📡 Student login event emitted');
+  });
+  
+  // Also emit the standard user-login event
+  _socketService!.socket?.emit('user-login', {
+    'enrollNumber': _authService!.user?.enrollNumber,
+    'name': _authService!.user?.name,
+    'role': _authService!.user?.role,
+    'year': _authService!.user?.year,
+    'section': _authService!.user?.section,
+    'batch': _authService!.user?.batch,
+    'id': _authService!.user?.id,
+    'timestamp': DateTime.now().toIso8601String(),
+  });
+  
+  // Listen for admin shutdown
+  _socketService!.socket?.on('admin-shutdown', (data) {
+    if (mounted) {
+      print('⚠️ Admin shutdown received');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Admin has logged out. Redirecting to login...'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      
+      Future.delayed(Duration(seconds: 1), () {
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/role-selection');
+        }
+      });
+    }
+  });
+}
 
   Future<void> _loadSubjects() async {
     if (!mounted) return;

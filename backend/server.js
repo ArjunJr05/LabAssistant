@@ -53,7 +53,8 @@ app.get('/api/status', (req, res) => {
   res.json({ 
     server: 'online',
     timestamp: new Date().toISOString(),
-    message: 'Admin server is running'
+    message: 'Admin server is running',
+    socketConnections: io.sockets.sockets.size
   });
 });
 
@@ -79,95 +80,199 @@ app.get('/status', (req, res) => {
   });
 });
 
-// Enhanced Socket.IO for real-time monitoring with admin logout support
-const connectedUsers = new Map(); // enrollNumber -> { socketId, userInfo, joinTime }
-const connectedSockets = new Map(); // socketId -> userInfo
+// Enhanced Socket.IO with proper database synchronization
 let serverShuttingDown = false;
 
 io.on('connection', (socket) => {
-  console.log(`🔌 New client connected: ${socket.id}`);
+  console.log(`New client connected: ${socket.id}`);
 
-  // Handle user login (students)
-  socket.on('user-login', async (userData) => {
+  // Handle student login with immediate database update
+  socket.on('student-login', async (userData) => {
     try {
-      console.log('👤 Student login via socket:', userData);
+      console.log('Student login event:', userData);
       
       const { enrollNumber, name, role } = userData;
       
-      if (role === 'student') {
-        // Store user connection info
-        connectedUsers.set(enrollNumber, {
-          socketId: socket.id,
-          userInfo: userData,
-          joinTime: new Date(),
-          lastActivity: new Date()
-        });
-        
-        connectedSockets.set(socket.id, {
-          enrollNumber,
-          name,
-          role
-        });
-
-        // Update database to mark user online
-        await pool.query(
-          'UPDATE users SET is_online = true, last_active = NOW(), updated_at = NOW() WHERE enroll_number = $1',
-          [enrollNumber]
-        );
-
-        console.log(`✅ Student ${name} (${enrollNumber}) connected and marked online`);
-
-        // Broadcast to all clients that a new user is online
-        io.emit('user-connected', {
-          enrollNumber,
-          name,
-          role,
-          timestamp: new Date().toISOString()
-        });
-
-        // Send current online users list to all clients
-        const onlineUsers = Array.from(connectedUsers.values())
-          .filter(conn => conn.userInfo.role === 'student')
-          .map(conn => conn.userInfo);
-        io.emit('online-users', onlineUsers);
-        io.emit('user-status-update', onlineUsers);
+      if (!enrollNumber || !name) {
+        console.error('Invalid student login data:', userData);
+        socket.emit('error', { message: 'Invalid login data' });
+        return;
       }
+
+      // Update database immediately
+      const updateResult = await pool.query(
+        `UPDATE users 
+         SET is_online = true, last_active = NOW(), updated_at = NOW()
+         WHERE enroll_number = $1 AND role = 'student'
+         RETURNING id, name, enroll_number, year, section, batch, role, is_online, last_active`,
+        [enrollNumber]
+      );
+
+      if (updateResult.rows.length > 0) {
+        const user = updateResult.rows[0];
+        console.log(`Database updated: ${user.name} is now online`);
+
+        // Store user info in socket session
+        socket.userData = {
+          id: user.id,
+          enrollNumber: user.enroll_number,
+          name: user.name,
+          role: user.role
+        };
+
+        // Broadcast to all clients (especially admin)
+        socket.broadcast.emit('user-connected', {
+          id: user.id,
+          name: user.name,
+          enrollNumber: user.enroll_number,
+          year: user.year,
+          section: user.section,
+          batch: user.batch,
+          role: user.role,
+          isOnline: true,
+          lastActive: user.last_active
+        });
+
+        socket.broadcast.emit('student-login', {
+          id: user.id,
+          name: user.name,
+          enrollNumber: user.enroll_number,
+          year: user.year,
+          section: user.section,
+          batch: user.batch,
+          role: user.role,
+          isOnline: true,
+          lastActive: user.last_active
+        });
+
+        // Send current online users to all clients
+        await broadcastOnlineUsers();
+
+      } else {
+        console.error(`Student not found in database: ${enrollNumber}`);
+        socket.emit('error', { message: 'Student not found or not registered' });
+      }
+
+    } catch (error) {
+      console.error('Error handling student login:', error);
+      socket.emit('error', { message: 'Login failed' });
+    }
+  });
+
+  // Handle generic user login
+  socket.on('user-login', async (userData) => {
+    try {
+      console.log('User login event:', userData);
+      
+      if (!userData.enrollNumber || !userData.role) {
+        return;
+      }
+
+      if (userData.role === 'student') {
+        // Handle same as student-login
+        socket.emit('student-login', userData);
+      } else if (userData.role === 'admin') {
+        // Admin login
+        socket.userData = {
+          enrollNumber: userData.enrollNumber,
+          name: userData.name,
+          role: 'admin'
+        };
+        console.log(`Admin connected: ${userData.name}`);
+        
+        // Send current online users to admin
+        await sendOnlineUsersToSocket(socket);
+      }
+
     } catch (error) {
       console.error('Error handling user login:', error);
+    }
+  });
+
+  // Handle student logout
+  socket.on('student-logout', async (userData) => {
+    try {
+      console.log('Student logout event:', userData);
+      
+      if (!userData.enrollNumber) {
+        return;
+      }
+
+      // Update database immediately
+      const updateResult = await pool.query(
+        `UPDATE users 
+         SET is_online = false, last_active = NOW(), updated_at = NOW()
+         WHERE enroll_number = $1 AND role = 'student'
+         RETURNING name, enroll_number`,
+        [userData.enrollNumber]
+      );
+
+      if (updateResult.rows.length > 0) {
+        const user = updateResult.rows[0];
+        console.log(`Database updated: ${user.name} is now offline`);
+
+        // Broadcast to all clients
+        socket.broadcast.emit('user-disconnected', {
+          enrollNumber: user.enroll_number,
+          name: user.name,
+          isOnline: false
+        });
+
+        socket.broadcast.emit('student-logout', {
+          enrollNumber: user.enroll_number,
+          name: user.name,
+          isOnline: false
+        });
+
+        // Send updated online users
+        await broadcastOnlineUsers();
+      }
+
+    } catch (error) {
+      console.error('Error handling student logout:', error);
+    }
+  });
+
+  // Handle generic user logout
+  socket.on('user-logout', async (userData) => {
+    try {
+      console.log('User logout event:', userData);
+      
+      if (userData.role === 'student' && userData.enrollNumber) {
+        socket.emit('student-logout', userData);
+      }
+
+    } catch (error) {
+      console.error('Error handling user logout:', error);
     }
   });
 
   // Handle admin login
   socket.on('admin-login', async (adminData) => {
     try {
-      console.log('🔑 Admin login via socket:', adminData);
+      console.log('Admin login event:', adminData);
       
       const { enrollNumber, name, role } = adminData;
       
       if (role === 'admin') {
-        // Store admin connection info
-        connectedUsers.set(enrollNumber, {
-          socketId: socket.id,
-          userInfo: adminData,
-          joinTime: new Date(),
-          lastActivity: new Date()
-        });
-        
-        connectedSockets.set(socket.id, {
-          enrollNumber,
-          name,
+        socket.userData = {
+          enrollNumber: enrollNumber,
+          name: name,
           role: 'admin'
-        });
+        };
 
-        // Update database to mark admin online
+        // Update admin online status in database
         await pool.query(
           'UPDATE users SET is_online = true, last_active = NOW(), updated_at = NOW() WHERE enroll_number = $1',
           [enrollNumber]
         );
 
-        console.log(`✅ Admin ${name} (${enrollNumber}) connected and server is now online`);
+        // Send current online users to this admin
+        await sendOnlineUsersToSocket(socket);
+        
+        console.log(`Admin ${name} registered and received online users`);
 
-        // Broadcast to all clients that admin is online (server is available)
+        // Broadcast to all clients that admin is online
         io.emit('admin-connected', {
           message: 'Server is now online. Admin has logged in.',
           timestamp: new Date().toISOString()
@@ -178,152 +283,196 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle user logout (students)
-  socket.on('user-logout', async (userData) => {
-    try {
-      console.log('👋 Student logout via socket:', userData);
-      
-      const { enrollNumber, name } = userData;
-      
-      // Remove from connected users
-      connectedUsers.delete(enrollNumber);
-      connectedSockets.delete(socket.id);
-
-      // Update database to mark user offline
-      await pool.query(
-        'UPDATE users SET is_online = false, last_active = NOW(), updated_at = NOW() WHERE enroll_number = $1',
-        [enrollNumber]
-      );
-
-      console.log(`✅ Student ${name} (${enrollNumber}) disconnected and marked offline`);
-
-      // Broadcast to all clients that user is offline
-      io.emit('user-disconnected', {
-        enrollNumber,
-        name,
-        timestamp: new Date().toISOString()
-      });
-
-      // Send updated online users list
-      const onlineUsers = Array.from(connectedUsers.values())
-        .filter(conn => conn.userInfo.role === 'student')
-        .map(conn => conn.userInfo);
-      io.emit('online-users', onlineUsers);
-      io.emit('user-status-update', onlineUsers);
-      
-    } catch (error) {
-      console.error('Error handling user logout:', error);
-    }
-  });
-
   // Handle admin logout - CRITICAL: This triggers server shutdown
   socket.on('admin-logout', async (adminData) => {
     try {
-      console.log('🔴 ADMIN LOGOUT VIA SOCKET - INITIATING SHUTDOWN:', adminData);
+      console.log('ADMIN LOGOUT VIA SOCKET - INITIATING SHUTDOWN:', adminData);
       
       if (serverShuttingDown) {
-        console.log('⚠️ Server already shutting down, ignoring duplicate admin logout');
+        console.log('Server already shutting down, ignoring duplicate admin logout');
         return;
       }
       
       serverShuttingDown = true;
       
-      const { enrollNumber, name, onlineStudentCount } = adminData;
+      const { enrollNumber, name } = adminData;
       
-      // Get all currently connected student sockets
-      const connectedStudents = Array.from(connectedUsers.values())
-        .filter(conn => conn.userInfo.role === 'student');
+      console.log('Setting all students offline in database...');
       
-      console.log(`📊 Found ${connectedStudents.length} connected students to disconnect`);
-      
-      // 1. Set all students offline in database
+      // Set all students offline in database
       const result = await pool.query(
         'UPDATE users SET is_online = false, last_active = NOW(), updated_at = NOW() WHERE role = $1 RETURNING name, enroll_number',
         ['student']
       );
       
-      console.log(`✅ Set ${result.rows.length} students offline in database`);
+      console.log(`Set ${result.rows.length} students offline in database`);
       
-      // 2. End all active sessions
+      // End all active sessions
       await pool.query(
         'UPDATE user_sessions SET is_active = false, session_end = NOW() WHERE is_active = true'
       );
       
-      // 3. Broadcast shutdown notification to all connected clients
+      // Broadcast shutdown notification to all connected clients
       const shutdownMessage = {
         message: 'Admin has logged out. Server is shutting down.',
         adminName: name,
         timestamp: new Date().toISOString(),
-        studentsAffected: connectedStudents.length,
+        studentsAffected: result.rows.length,
         reason: 'admin_logout'
       };
       
-      console.log('📡 Broadcasting admin shutdown to all clients...');
+      console.log('Broadcasting admin shutdown to all clients...');
       io.emit('admin-shutdown', shutdownMessage);
       
-      // 4. Send individual disconnection notices and force disconnect students
+      // Force disconnect all client sockets after delay
       setTimeout(() => {
-        console.log('🔌 Force disconnecting all student sockets...');
+        console.log('Force disconnecting all client sockets...');
         
-        connectedStudents.forEach(studentConn => {
-          const studentSocket = io.sockets.sockets.get(studentConn.socketId);
-          if (studentSocket) {
-            console.log(`   Disconnecting student: ${studentConn.userInfo.name}`);
-            studentSocket.emit('force-disconnect', {
+        // Get all connected sockets and disconnect them
+        const sockets = io.sockets.sockets;
+        sockets.forEach((clientSocket) => {
+          if (clientSocket.id !== socket.id) { // Don't disconnect admin socket yet
+            console.log(`Disconnecting socket: ${clientSocket.id}`);
+            clientSocket.emit('force-disconnect', {
               reason: 'admin_logout',
               message: 'Server is shutting down due to admin logout',
               timestamp: new Date().toISOString()
             });
-            studentSocket.disconnect(true);
+            clientSocket.disconnect(true);
           }
-          // Remove from our tracking
-          connectedUsers.delete(studentConn.userInfo.enrollNumber);
-          connectedSockets.delete(studentConn.socketId);
         });
         
-        console.log('✅ All student sockets disconnected');
-        
-        // 5. Remove admin from connected users
-        connectedUsers.delete(enrollNumber);
-        connectedSockets.delete(socket.id);
-        
-        // 6. Set admin offline in database
+        // Set admin offline in database
         pool.query(
           'UPDATE users SET is_online = false, last_active = NOW(), updated_at = NOW() WHERE enroll_number = $1',
           [enrollNumber]
         ).then(() => {
-          console.log('✅ Admin marked offline in database');
+          console.log('Admin marked offline in database');
         }).catch(err => {
-          console.error('❌ Error marking admin offline:', err);
+          console.error('Error marking admin offline:', err);
         });
         
-        console.log('🔴 ADMIN LOGOUT COMPLETED - SERVER SHUTDOWN SEQUENCE FINISHED');
+        console.log('ADMIN LOGOUT COMPLETED - SERVER SHUTDOWN SEQUENCE FINISHED');
         
-        // 7. Optional: Actually terminate the server process after a delay
+        // Optional: Terminate server process after delay
         setTimeout(() => {
-          console.log('🔴 TERMINATING SERVER PROCESS DUE TO ADMIN LOGOUT...');
+          console.log('TERMINATING SERVER PROCESS DUE TO ADMIN LOGOUT...');
           process.exit(0);
-        }, 3000); // 3 second delay to ensure all cleanup is done
+        }, 3000);
         
-      }, 2000); // 2 second delay to ensure messages are delivered
+      }, 2000);
       
     } catch (error) {
-      console.error('💥 Error handling admin logout:', error);
-      serverShuttingDown = false; // Reset flag on error
+      console.error('Error handling admin logout:', error);
+      serverShuttingDown = false;
     }
   });
 
-  // Legacy socket events (keeping for compatibility)
+  // Get online users request
+  socket.on('get-online-users', async () => {
+    try {
+      console.log('Online users requested by socket:', socket.id);
+      await sendOnlineUsersToSocket(socket);
+    } catch (error) {
+      console.error('Error sending online users:', error);
+    }
+  });
+
+  // Handle heartbeat/ping with database update
+  socket.on('ping', async (data) => {
+    socket.emit('pong', { 
+      timestamp: new Date().toISOString(),
+      received: data.timestamp 
+    });
+
+    // Update last active if user data exists
+    if (socket.userData && socket.userData.enrollNumber && socket.userData.role === 'student') {
+      try {
+        await pool.query(
+          `UPDATE users 
+           SET last_active = NOW() 
+           WHERE enroll_number = $1 AND role = 'student'`,
+          [socket.userData.enrollNumber]
+        );
+      } catch (error) {
+        console.error('Error updating last active:', error);
+      }
+    }
+  });
+
+  // Handle socket disconnection with proper cleanup
+  socket.on('disconnect', async (reason) => {
+    try {
+      console.log(`Client disconnected: ${socket.id}, reason: ${reason}`);
+      
+      // If student disconnects, mark as offline
+      if (socket.userData && socket.userData.role === 'student' && socket.userData.enrollNumber) {
+        console.log(`Marking student ${socket.userData.name} as offline due to disconnect`);
+        
+        const updateResult = await pool.query(
+          `UPDATE users 
+           SET is_online = false, last_active = NOW(), updated_at = NOW()
+           WHERE enroll_number = $1 AND role = 'student'
+           RETURNING name, enroll_number`,
+          [socket.userData.enrollNumber]
+        );
+
+        if (updateResult.rows.length > 0) {
+          const user = updateResult.rows[0];
+          
+          // Broadcast disconnect to admin
+          socket.broadcast.emit('user-disconnected', {
+            enrollNumber: user.enroll_number,
+            name: user.name,
+            isOnline: false,
+            reason: 'socket_disconnect'
+          });
+
+          // Update online users for admin
+          await broadcastOnlineUsers();
+        }
+        
+      } else if (socket.userData && socket.userData.role === 'admin') {
+        console.log('ADMIN DISCONNECTED UNEXPECTEDLY');
+        
+        if (!serverShuttingDown) {
+          console.log('ADMIN UNEXPECTED DISCONNECT - INITIATING EMERGENCY SHUTDOWN');
+          
+          // Set all students offline
+          await pool.query(
+            'UPDATE users SET is_online = false, last_active = NOW(), updated_at = NOW() WHERE role = $1',
+            ['student']
+          );
+          
+          // End all active sessions
+          await pool.query(
+            'UPDATE user_sessions SET is_active = false, session_end = NOW() WHERE is_active = true'
+          );
+          
+          // Notify all students
+          io.emit('admin-shutdown', {
+            message: 'Admin connection lost unexpectedly. Server is shutting down.',
+            timestamp: new Date().toISOString(),
+            reason: 'admin_disconnect'
+          });
+          
+          // Shutdown server after delay
+          setTimeout(() => {
+            console.log('EMERGENCY SERVER SHUTDOWN DUE TO ADMIN DISCONNECT');
+            process.exit(1);
+          }, 3000);
+        }
+      }
+    } catch (error) {
+      console.error('Error handling disconnect:', error);
+    }
+  });
+
+  // Legacy event handlers for compatibility
   socket.on('code-execution', (data) => {
-    const user = connectedSockets.get(socket.id);
+    const user = socket.userData;
     if (user) {
       console.log('Code execution from:', user.enrollNumber);
-      
-      // Update last activity
-      const userConnection = connectedUsers.get(user.enrollNumber);
-      if (userConnection) {
-        userConnection.lastActivity = new Date();
-      }
       
       // Broadcast code execution to admins
       io.emit('student-activity', {
@@ -337,9 +486,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('screen-share', (screenData) => {
-    const user = connectedSockets.get(socket.id);
+    const user = socket.userData;
     if (user) {
-      // Handle screen sharing for admin monitoring
       io.emit('student-screen', {
         userId: user.enrollNumber,
         userName: user.name,
@@ -349,13 +497,19 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle user activity updates
-  socket.on('user-activity', (activityData) => {
-    const user = connectedSockets.get(socket.id);
-    if (user) {
-      const userConnection = connectedUsers.get(user.enrollNumber);
-      if (userConnection) {
-        userConnection.lastActivity = new Date();
+  socket.on('user-activity', async (activityData) => {
+    const user = socket.userData;
+    if (user && user.role === 'student') {
+      // Update last active time
+      try {
+        await pool.query(
+          `UPDATE users 
+           SET last_active = NOW() 
+           WHERE enroll_number = $1 AND role = 'student'`,
+          [user.enrollNumber]
+        );
+      } catch (error) {
+        console.error('Error updating activity:', error);
       }
       
       io.emit('student-activity', {
@@ -367,167 +521,115 @@ io.on('connection', (socket) => {
       });
     }
   });
-
-  // Handle get online users request
-  socket.on('get-online-users', () => {
-    try {
-      const onlineUsers = Array.from(connectedUsers.values())
-        .filter(conn => conn.userInfo.role === 'student')
-        .map(conn => conn.userInfo);
-      
-      socket.emit('online-users', onlineUsers);
-      console.log(`📊 Sent ${onlineUsers.length} online users to requesting client`);
-    } catch (error) {
-      console.error('Error sending online users:', error);
-    }
-  });
-
-  // Handle socket disconnection
-  socket.on('disconnect', async (reason) => {
-    try {
-      console.log(`🔌 Client disconnected: ${socket.id}, reason: ${reason}`);
-      
-      const userInfo = connectedSockets.get(socket.id);
-      if (userInfo) {
-        const { enrollNumber, name, role } = userInfo;
-        
-        // Remove from our tracking
-        connectedUsers.delete(enrollNumber);
-        connectedSockets.delete(socket.id);
-        
-        // Update database to mark user offline
-        await pool.query(
-          'UPDATE users SET is_online = false, last_active = NOW(), updated_at = NOW() WHERE enroll_number = $1',
-          [enrollNumber]
-        );
-        
-        console.log(`✅ ${role} ${name} (${enrollNumber}) marked offline due to disconnect`);
-        
-        if (role === 'student') {
-          // Broadcast student disconnection
-          io.emit('user-disconnected', {
-            enrollNumber,
-            name,
-            timestamp: new Date().toISOString(),
-            reason: 'socket_disconnect'
-          });
-          
-          // Send updated online users list
-          const onlineUsers = Array.from(connectedUsers.values())
-            .filter(conn => conn.userInfo.role === 'student')
-            .map(conn => conn.userInfo);
-          io.emit('online-users', onlineUsers);
-          io.emit('user-status-update', onlineUsers);
-          
-        } else if (role === 'admin') {
-          console.log('🔴 ADMIN DISCONNECTED UNEXPECTEDLY');
-          
-          if (!serverShuttingDown) {
-            // If admin disconnects unexpectedly, notify all students and initiate shutdown
-            console.log('🚨 ADMIN UNEXPECTED DISCONNECT - INITIATING EMERGENCY SHUTDOWN');
-            
-            // Set all students offline
-            await pool.query(
-              'UPDATE users SET is_online = false, last_active = NOW(), updated_at = NOW() WHERE role = $1',
-              ['student']
-            );
-            
-            // End all active sessions
-            await pool.query(
-              'UPDATE user_sessions SET is_active = false, session_end = NOW() WHERE is_active = true'
-            );
-            
-            // Notify all students
-            io.emit('admin-shutdown', {
-              message: 'Admin connection lost unexpectedly. Server is shutting down.',
-              timestamp: new Date().toISOString(),
-              reason: 'admin_disconnect'
-            });
-            
-            // Disconnect all remaining sockets and shutdown server
-            setTimeout(() => {
-              console.log('🔴 EMERGENCY SERVER SHUTDOWN DUE TO ADMIN DISCONNECT');
-              process.exit(1);
-            }, 3000);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error handling disconnect:', error);
-    }
-  });
-
-  // Handle heartbeat/ping to keep connections alive
-  socket.on('ping', (data) => {
-    socket.emit('pong', data);
-  });
 });
 
-// Utility function to get connection statistics
-function getConnectionStats() {
-  const students = Array.from(connectedUsers.values()).filter(conn => conn.userInfo.role === 'student');
-  const admins = Array.from(connectedUsers.values()).filter(conn => conn.userInfo.role === 'admin');
-  
-  return {
-    totalConnections: connectedUsers.size,
-    studentConnections: students.length,
-    adminConnections: admins.length,
-    socketConnections: io.sockets.sockets.size,
-    students: students.map(s => ({ name: s.userInfo.name, enrollNumber: s.userInfo.enrollNumber })),
-    admins: admins.map(a => ({ name: a.userInfo.name, enrollNumber: a.userInfo.enrollNumber }))
-  };
+// Helper function to get online users from database
+async function getOnlineUsersFromDB() {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        id, name, enroll_number, year, section, batch, role, 
+        is_online, last_active
+      FROM users
+      WHERE role = 'student' 
+        AND is_online = true
+        AND last_active > NOW() - INTERVAL '10 minutes'
+      ORDER BY last_active DESC
+    `);
+
+    return result.rows.map(user => ({
+      id: user.id,
+      name: user.name,
+      enrollNumber: user.enroll_number,
+      enroll_number: user.enroll_number, // Both formats for compatibility
+      year: user.year,
+      section: user.section,
+      batch: user.batch,
+      role: user.role,
+      isOnline: user.is_online,
+      is_online: user.is_online, // Both formats for compatibility
+      lastActive: user.last_active,
+      last_active: user.last_active // Both formats for compatibility
+    }));
+  } catch (error) {
+    console.error('Error getting online users from DB:', error);
+    return [];
+  }
+}
+
+// Helper function to send online users to a specific socket
+async function sendOnlineUsersToSocket(socket) {
+  try {
+    const onlineUsers = await getOnlineUsersFromDB();
+    console.log(`Sending ${onlineUsers.length} online users to socket ${socket.id}`);
+    
+    socket.emit('online-users', onlineUsers);
+    socket.emit('online-users-bulk', onlineUsers); // Also emit bulk version
+    
+  } catch (error) {
+    console.error('Error sending online users to socket:', error);
+  }
+}
+
+// Helper function to broadcast online users to all clients
+async function broadcastOnlineUsers() {
+  try {
+    const onlineUsers = await getOnlineUsersFromDB();
+    console.log(`Broadcasting ${onlineUsers.length} online users to all clients`);
+    
+    io.emit('online-users', onlineUsers);
+    io.emit('online-users-bulk', onlineUsers);
+    io.emit('user-status-update', onlineUsers);
+    
+  } catch (error) {
+    console.error('Error broadcasting online users:', error);
+  }
 }
 
 // Periodic cleanup of stale connections
-setInterval(() => {
-  if (serverShuttingDown) return; // Skip cleanup if shutting down
+setInterval(async () => {
+  if (serverShuttingDown) return;
   
-  const now = new Date();
-  const staleThreshold = 5 * 60 * 1000; // 5 minutes
-  
-  connectedUsers.forEach(async (connection, enrollNumber) => {
-    const timeSinceActivity = now - connection.lastActivity;
-    if (timeSinceActivity > staleThreshold) {
-      console.log(`🧹 Cleaning up stale connection for ${connection.userInfo.name}`);
+  try {
+    console.log('Running periodic stale user cleanup...');
+    
+    const cleanupResult = await pool.query(`
+      UPDATE users 
+      SET is_online = false, updated_at = NOW()
+      WHERE is_online = true 
+      AND role = 'student'
+      AND last_active < NOW() - INTERVAL '10 minutes'
+      RETURNING name, enroll_number
+    `);
+
+    if (cleanupResult.rows.length > 0) {
+      console.log(`Periodic cleanup: marked ${cleanupResult.rows.length} stale users offline`);
       
-      // Mark as offline in database
-      try {
-        await pool.query(
-          'UPDATE users SET is_online = false, last_active = NOW(), updated_at = NOW() WHERE enroll_number = $1',
-          [enrollNumber]
-        );
-        
-        // Remove from tracking
-        connectedUsers.delete(enrollNumber);
-        connectedSockets.delete(connection.socketId);
-        
-        // Broadcast disconnection
+      // Broadcast updates
+      cleanupResult.rows.forEach(user => {
         io.emit('user-disconnected', {
-          enrollNumber,
-          name: connection.userInfo.name,
-          timestamp: now.toISOString(),
-          reason: 'stale_connection'
+          enrollNumber: user.enroll_number,
+          name: user.name,
+          isOnline: false,
+          reason: 'periodic_cleanup'
         });
-        
-        // Update online users list
-        const onlineUsers = Array.from(connectedUsers.values())
-          .filter(conn => conn.userInfo.role === 'student')
-          .map(conn => conn.userInfo);
-        io.emit('online-users', onlineUsers);
-        
-      } catch (error) {
-        console.error('Error cleaning up stale connection:', error);
-      }
+      });
+
+      // Send updated online users
+      await broadcastOnlineUsers();
     }
-  });
-}, 60000); // Run every minute
+
+  } catch (error) {
+    console.error('Error in periodic cleanup:', error);
+  }
+}, 5 * 60 * 1000); // 5 minutes
 
 // Database initialization
 async function initDatabase() {
   try {
     // Test database connection
     const client = await pool.connect();
-    console.log('✅ Database connection successful');
+    console.log('Database connection successful');
     client.release();
 
     // Create tables if they don't exist
@@ -601,6 +703,23 @@ async function initDatabase() {
       )
     `);
 
+    // Add student_activities table for monitoring
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS student_activities (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        exercise_id INTEGER REFERENCES exercises(id) ON DELETE CASCADE,
+        activity_type VARCHAR(50) NOT NULL,
+        code TEXT,
+        status VARCHAR(20),
+        score INTEGER DEFAULT 0,
+        test_results JSONB,
+        tests_passed INTEGER DEFAULT 0,
+        total_tests INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Add columns if they don't exist
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT false`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
@@ -612,7 +731,7 @@ async function initDatabase() {
     await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS test_cases_passed INTEGER DEFAULT 0`);
     await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS total_test_cases INTEGER DEFAULT 0`);
     
-    console.log('✅ Database tables initialized successfully');
+    console.log('Database tables initialized successfully');
     
     // Insert default admin if doesn't exist
     const adminCheck = await pool.query("SELECT * FROM users WHERE role = 'admin' LIMIT 1");
@@ -623,7 +742,7 @@ async function initDatabase() {
         "INSERT INTO users (name, enroll_number, year, section, batch, password, role) VALUES ($1, $2, $3, $4, $5, $6, $7)",
         ['Administrator', 'ADMIN001', 'ADMIN', 'ADM', '2024', hashedPassword, 'admin']
       );
-      console.log('✅ Default admin created');
+      console.log('Default admin created');
     }
 
     // Insert default subject if doesn't exist
@@ -633,11 +752,15 @@ async function initDatabase() {
         "INSERT INTO subjects (name, code) VALUES ($1, $2)",
         ['C Programming', 'CS101']
       );
-      console.log('✅ Default subject created');
+      console.log('Default subject created');
     }
 
+    // Clear all online statuses on server start
+    await pool.query('UPDATE users SET is_online = false WHERE role = $1', ['student']);
+    console.log('Cleared all online statuses on server start');
+
   } catch (error) {
-    console.error('❌ Database initialization error:', error.message);
+    console.error('Database initialization error:', error.message);
     console.error('Please check your database configuration in config/database.js');
     process.exit(1);
   }
@@ -658,35 +781,47 @@ app.use('*', (req, res) => {
     message: 'Route not found',
     availableRoutes: [
       '/api/health',
+      '/api/status',
       '/api/auth/login',
-      '/api/auth/register',
+      '/api/auth/register', 
       '/api/exercises/subjects',
       '/api/admin/*',
-      '/api/student/*',
-      // Legacy routes
-      '/health',
-      '/auth/login',
-      '/auth/register',
-      '/exercises/subjects',
-      '/admin/*',
-      '/student/*'
+      '/api/student/*'
     ]
   });
 });
 
 // Graceful shutdown handlers
-process.on('SIGTERM', () => {
-  console.log('🔴 SIGTERM received - shutting down gracefully');
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received - shutting down gracefully');
+  
+  // Mark all users as offline
+  try {
+    await pool.query('UPDATE users SET is_online = false WHERE role = $1', ['student']);
+    console.log('All users marked offline');
+  } catch (error) {
+    console.error('Error marking users offline:', error);
+  }
+  
   server.close(() => {
-    console.log('✅ HTTP server closed');
+    console.log('HTTP server closed');
     process.exit(0);
   });
 });
 
-process.on('SIGINT', () => {
-  console.log('🔴 SIGINT received - shutting down gracefully');
+process.on('SIGINT', async () => {
+  console.log('SIGINT received - shutting down gracefully');
+  
+  // Mark all users as offline
+  try {
+    await pool.query('UPDATE users SET is_online = false WHERE role = $1', ['student']);
+    console.log('All users marked offline');
+  } catch (error) {
+    console.error('Error marking users offline:', error);
+  }
+  
   server.close(() => {
-    console.log('✅ HTTP server closed');
+    console.log('HTTP server closed');
     process.exit(0);
   });
 });
@@ -694,26 +829,20 @@ process.on('SIGINT', () => {
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, '0.0.0.0', async () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Admin Panel: http://0.0.0.0:${PORT}/api/health`);
-  console.log(`💻 Socket.IO enabled for real-time monitoring`);
-  console.log(`🌐 Server accessible from any device on the network`);
-  console.log(`🔴 Enhanced with admin logout and server shutdown handling`);
-  console.log(`🔗 API endpoints available with /api prefix`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Admin Panel: http://0.0.0.0:${PORT}/api/health`);
+  console.log(`Socket.IO enabled for real-time monitoring`);
+  console.log(`Server accessible from any device on the network`);
+  console.log(`Enhanced with proper database sync and admin logout handling`);
+  console.log(`API endpoints available with /api prefix`);
   
   await initDatabase();
   
-  console.log('🎉 Lab Monitoring System is ready!');
-  console.log('\n📝 Default Admin Credentials:');
+  console.log('Lab Monitoring System is ready!');
+  console.log('\nDefault Admin Credentials:');
   console.log('   Username: ADMIN001');
   console.log('   Password: Admin_aids@smvec\n');
-  console.log('📍 Available API endpoints:');
-  console.log('   - /api/auth/login');
-  console.log('   - /api/auth/register');
-  console.log('   - /api/admin/*');
-  console.log('   - /api/student/*');
-  console.log('   - /api/exercises/*\n');
 });
 
 // Export for testing or external use
-module.exports = { app, server, io, getConnectionStats };
+module.exports = { app, server, io };

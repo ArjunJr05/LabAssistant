@@ -396,42 +396,37 @@ class ApiService {
     }
   }
 
-  // NEW METHOD: Mark exercise as completed
   Future<bool> markExerciseCompleted(int exerciseId) async {
-    try {
-      print('🔄 Marking exercise $exerciseId as completed');
-      
-      final url = await baseUrl;
-      final response = await http.post(
-        Uri.parse('$url/student/complete-exercise'),
-        headers: authService.authHeaders,
-        body: json.encode({
-          'exercise_id': exerciseId,
-          'completed_at': DateTime.now().toIso8601String(),
-        }),
-      );
+  try {
+    print('🔄 Marking exercise $exerciseId as completed via API');
+    
+    final url = await baseUrl;
+    final response = await http.post(
+      Uri.parse('$url/student/mark-completed'),
+      headers: authService.authHeaders,
+      body: json.encode({
+        'exerciseId': exerciseId,
+        'timestamp': DateTime.now().toIso8601String(),
+      }),
+    );
 
-      print('Mark completed response status: ${response.statusCode}');
-      print('Mark completed response body: ${response.body}');
+    print('Mark completed response status: ${response.statusCode}');
+    print('Mark completed response body: ${response.body}');
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        print('✅ Exercise marked as completed successfully');
-        return true;
-      } else if (response.statusCode == 401) {
-        throw Exception('Authentication failed. Please login again.');
-      } else if (response.statusCode == 409) {
-        // Exercise already completed - this is still a success
-        print('ℹ️ Exercise was already marked as completed');
-        return true;
-      } else {
-        final errorData = json.decode(response.body);
-        throw Exception('Failed to mark exercise as completed: ${errorData['message'] ?? response.body}');
-      }
-    } catch (e) {
-      print('❌ Error marking exercise as completed: $e');
-      rethrow;
+    if (response.statusCode == 200) {
+      print('✅ Exercise $exerciseId marked as completed successfully');
+      return true;
+    } else if (response.statusCode == 401) {
+      throw Exception('Authentication failed. Please login again.');
+    } else {
+      print('❌ Failed to mark exercise as completed: ${response.statusCode}');
+      return false;
     }
+  } catch (e) {
+    print('❌ Error marking exercise as completed: $e');
+    return false;
   }
+}
 
   // NEW METHOD: Remove completion status (for testing purposes)
   Future<bool> unmarkExerciseCompleted(int exerciseId) async {
@@ -466,70 +461,73 @@ class ApiService {
     }
   }
 
-  // ENHANCED METHOD: Get completed exercises for student with better error handling
-  Future<List<Map<String, dynamic>>> getCompletedExercises() async {
-    try {
-      print('🔄 Fetching completed exercises for student');
+  // Enhanced getCompletedExercises method to handle different response formats
+@override
+Future<List<Map<String, dynamic>>> getCompletedExercises() async {
+  try {
+    final url = await baseUrl;
+    final response = await http.get(
+      Uri.parse('$url/student/completed-exercises'),
+      headers: authService.authHeaders,
+    );
+
+    print('Completed exercises response status: ${response.statusCode}');
+    print('Completed exercises response body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
       
-      final url = await baseUrl;
-      final response = await http.get(
-        Uri.parse('$url/student/completed-exercises'),
-        headers: authService.authHeaders,
-      );
-
-      print('Completed exercises response status: ${response.statusCode}');
-      print('Completed exercises response body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        final dynamic data = json.decode(response.body);
-        
-        if (data == null) {
-          print('Received null response for completed exercises');
-          return [];
+      List<Map<String, dynamic>> completedExercises = [];
+      
+      if (data is List) {
+        // Handle direct array response
+        for (var item in data) {
+          if (item is Map<String, dynamic>) {
+            completedExercises.add(item);
+          }
         }
-        
-        if (data is List) {
-          print('✅ Successfully fetched ${data.length} completed exercises');
-          return List<Map<String, dynamic>>.from(data);
-        } else if (data is Map) {
-          // Handle wrapped response
-          if (data.containsKey('completedExercises')) {
-            final completedExercises = data['completedExercises'];
-            if (completedExercises is List) {
-              print('✅ Successfully fetched ${completedExercises.length} completed exercises (wrapped)');
-              return List<Map<String, dynamic>>.from(completedExercises);
-            }
-          } else if (data.containsKey('exercises')) {
-            final exercises = data['exercises'];
-            if (exercises is List) {
-              print('✅ Successfully fetched ${exercises.length} completed exercises (wrapped as exercises)');
-              return List<Map<String, dynamic>>.from(exercises);
+      } else if (data is Map<String, dynamic>) {
+        // Handle wrapped response
+        if (data.containsKey('completedExercises')) {
+          final exercises = data['completedExercises'];
+          if (exercises is List) {
+            for (var item in exercises) {
+              if (item is Map<String, dynamic>) {
+                completedExercises.add(item);
+              }
             }
           }
-          
-          print('⚠️ Received Map response but no recognized structure: $data');
-          return [];
-        } else {
-          print('⚠️ Expected List or Map but got: ${data.runtimeType}');
-          return [];
+        } else if (data.containsKey('exercises')) {
+          final exercises = data['exercises'];
+          if (exercises is List) {
+            for (var item in exercises) {
+              if (item is Map<String, dynamic>) {
+                completedExercises.add(item);
+              }
+            }
+          }
         }
-      } else if (response.statusCode == 401) {
-        throw Exception('Authentication failed. Please login again.');
-      } else if (response.statusCode == 404) {
-        print('ℹ️ No completed exercises found');
-        return [];
-      } else {
-        print('❌ HTTP Error ${response.statusCode}: ${response.body}');
-        return [];
       }
-    } catch (e) {
-      print('❌ Error fetching completed exercises: $e');
-      if (e.toString().contains('Authentication')) {
-        rethrow;
+      
+      print('Processed completed exercises: ${completedExercises.length} items');
+      for (var exercise in completedExercises) {
+        print('  - Exercise ID: ${exercise['exercise_id']}, Status: ${exercise['status']}, Score: ${exercise['score']}');
       }
-      return [];
+      
+      return completedExercises;
+    } else if (response.statusCode == 401) {
+      throw Exception('Authentication failed. Please login again.');
+    } else {
+      throw Exception('Failed to load completed exercises: ${response.statusCode}');
     }
+  } catch (e) {
+    print('Error fetching completed exercises: $e');
+    if (e.toString().contains('Authentication')) {
+      rethrow;
+    }
+    return [];
   }
+}
 
   // ENHANCED METHOD: Check if specific exercise is completed
   Future<bool> isExerciseCompleted(int exerciseId) async {

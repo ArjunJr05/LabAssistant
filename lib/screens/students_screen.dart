@@ -345,6 +345,27 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
     );
   }
 
+  // Add this method to your _StudentDashboardState class (or _StudentsScreenState if that's where the error is)
+Future<void> _refreshCompletionStatus() async {
+  try {
+    if (selectedSubject != null && _apiService != null) {
+      print('🔄 Refreshing completion status...');
+      
+      // Reload completed exercises from the database
+      await _loadCompletedExercises();
+      
+      // Trigger UI rebuild to reflect changes
+      if (mounted) {
+        setState(() {});
+      }
+      
+      print('✅ Completion status refreshed');
+    }
+  } catch (e) {
+    print('❌ Error refreshing completion status: $e');
+  }
+}
+
   void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -983,18 +1004,23 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
                                                           ),
                                                         );
                                                         
+                                                        // Always refresh completion status after returning from code editor
+                                                        print('🔄 Returned from code editor, refreshing completion status...');
+                                                        await _refreshCompletionStatus();
+                                                        
                                                         // Handle the result from code editor
                                                         if (result == true && !isCompleted) {
                                                           // Exercise was completed for the first time
-                                                          await _markExerciseCompleted(exercise.id);
+                                                          print('✅ Exercise ${exercise.id} completed successfully!');
+                                                          
+                                                          // Force refresh the completion data
+                                                          await _loadCompletedExercises();
                                                           
                                                           // Show success message
                                                           _showSuccessSnackBar('Exercise completed successfully!');
-                                                          
-                                                          // Refresh the exercises to ensure completion status is updated
-                                                          if (selectedSubject != null) {
-                                                            await _loadExercises(selectedSubject!.id);
-                                                          }
+                                                        } else if (result == true && isCompleted) {
+                                                          // Exercise was already completed, just refreshed
+                                                          print('🔄 Exercise ${exercise.id} status refreshed');
                                                         }
                                                       },
                                                     ),
@@ -1009,7 +1035,7 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
                 ),
               ],
             ),
-          ));
+    ));
   }
 
   // Enhanced color methods for better UI

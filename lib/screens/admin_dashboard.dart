@@ -30,9 +30,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   AuthService? _authService;
   ApiService? _apiService;
   Timer? _refreshTimer;
-  Timer? _debounceTimer;
   bool _isRefreshing = false;
-  DateTime? _lastFetchTime;
 
   @override
   void initState() {
@@ -51,8 +49,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   void _startPeriodicRefresh() {
-    // Refresh online users every 60 seconds (reduced from 30s for better performance)
-    _refreshTimer = Timer.periodic(Duration(seconds: 60), (timer) {
+    // Refresh online users every 30 seconds
+    _refreshTimer = Timer.periodic(Duration(seconds: 30), (timer) {
       if (mounted && !_isRefreshing) {
         print('Periodic refresh: Fetching online users...');
         _fetchOnlineUsers();
@@ -75,35 +73,20 @@ class _AdminDashboardState extends State<AdminDashboard> {
     // Listen for user connections
     _socketService!.socket?.on('user-connected', (data) {
       print('User connected: $data');
-      // Use socket data directly instead of API call for better performance
-      if (data['user'] != null && mounted) {
-        _debouncedFetchOnlineUsers();
-      }
+      _fetchOnlineUsers();
     });
     
     // Listen for user disconnections
     _socketService!.socket?.on('user-disconnected', (data) {
       print('User disconnected: $data');
-      // Use socket data directly instead of API call for better performance
-      if (mounted) {
-        _debouncedFetchOnlineUsers();
-      }
+      _fetchOnlineUsers();
     });
     
     // Listen for online users list updates
     _socketService!.socket?.on('online-users', (data) {
       print('Socket online users update: $data');
-      // Use socket data directly instead of triggering API call
-      if (mounted && data is List) {
-        try {
-          setState(() {
-            onlineUsers = data.map((u) => User.fromJson(u)).toList();
-          });
-        } catch (e) {
-          print('Error parsing socket user data: $e');
-          _debouncedFetchOnlineUsers();
-        }
-      }
+      // Don't rely only on socket data, still fetch from API for accuracy
+      _fetchOnlineUsers();
     });
 
     _socketService!.socket?.on('student-activity', (data) {
@@ -114,23 +97,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
     _socketService!.socket?.on('connect', (_) {
       print('Socket connected, requesting online users');
       _socketService!.socket?.emit('get-online-users');
-      _debouncedFetchOnlineUsers(); // Use debounced version
+      _fetchOnlineUsers(); // Also fetch from API
     });
 
     // Listen for user status changes
     _socketService!.socket?.on('user-status-changed', (data) {
       print('User status changed: $data');
-      _debouncedFetchOnlineUsers(); // Use debounced version
-    });
-  }
-
-  // Debounced fetch to prevent excessive API calls
-  void _debouncedFetchOnlineUsers() {
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(Duration(seconds: 2), () {
-      if (mounted) {
-        _fetchOnlineUsers();
-      }
+      _fetchOnlineUsers(); // Refresh from database
     });
   }
 
@@ -161,15 +134,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Future<void> _fetchOnlineUsers() async {
     if (_apiService == null || _isRefreshing) return;
     
-    // Add debouncing - don't fetch if called within last 10 seconds
-    final now = DateTime.now();
-    if (_lastFetchTime != null && 
-        now.difference(_lastFetchTime!).inSeconds < 10) {
-      print('Skipping fetch - too recent (${now.difference(_lastFetchTime!).inSeconds}s ago)');
-      return;
-    }
-    
-    _lastFetchTime = now;
     _isRefreshing = true;
     
     try {
@@ -180,7 +144,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
           onlineUsers = users;
         });
       }
-      print('Successfully fetched ${users.length} online users from database');
+      print('Successfully fetched ${users.length} online users from database:');
+      for (var user in users) {
+        print('  - ${user.name} (${user.enrollNumber}) - Last active: ${user.lastActive}');
+      }
     } catch (e) {
       print('Error fetching online users: $e');
       if (mounted) {
@@ -359,9 +326,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   void dispose() {
-    // Cancel all timers
+    // Cancel the refresh timer
     _refreshTimer?.cancel();
-    _debounceTimer?.cancel();
     
     // Now we can safely disconnect using stored references without accessing context
     _socketService?.disconnect();
@@ -438,7 +404,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             icon: Icon(Icons.monitor),
             label: 'Monitor Students',
           ),
-          BottomNavigationBarItem(
+          BottomNavigationBarItem( 
             icon: Icon(Icons.assignment),
             label: 'Manage Exercises',
           ),
@@ -451,8 +417,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return RefreshIndicator(
       onRefresh: _handleRefresh,
       child: SingleChildScrollView(
-        // Add key to prevent unnecessary rebuilds
-        key: const PageStorageKey('dashboard_tab'),
         physics: AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -468,7 +432,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.green,
+                    color: Colors.green[800],
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -487,13 +451,48 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
             const SizedBox(height: 20),
             
-            // Stats cards - use const where possible for better performance
-            _buildStatsSection(),
+            // Stats cards
+            Row(
+              children: [
+                _buildStatCard(
+                  'Online Students',
+                  onlineUsers.length.toString(),
+                  Icons.people,
+                  Colors.green,
+                ),
+                const SizedBox(width: 16),
+                _buildStatCard(
+                  'Total Exercises',
+                  analytics['totalExercises']?.toString() ?? '0',
+                  Icons.assignment,
+                  Colors.blue,
+                ),
+                const SizedBox(width: 16),
+                _buildStatCard(
+                  'Active Sessions',
+                  onlineUsers.length.toString(),
+                  Icons.computer,
+                  Colors.orange,
+                ),
+              ],
+            ),
             
             const SizedBox(height: 32),
             
-            // Optimized students list
-            _buildOptimizedStudentsList(),
+            Row(
+              children: [
+                Text(
+                  'Active Students',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                Spacer(),
+                Text(
+                  'Total: ${onlineUsers.length}',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 SizedBox(width: 8),
                 Text(
                   'Last updated: ${DateTime.now().toString().substring(11, 19)}',

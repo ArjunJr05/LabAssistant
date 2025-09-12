@@ -329,6 +329,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   final _enrollController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLogin = true;
+  bool _showAdminPassword = false;
+  bool _showMasterPassword = false;
+  bool _showPassword = false;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   
@@ -558,44 +561,65 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                         ),
                                         const SizedBox(height: 20),
                                       ],
-                                      
                                       if (!_isLogin && widget.isAdminMode) ...[
-                                        _buildTextField(
-                                          controller: _adminNameController,
-                                          label: 'Admin Name',
-                                          icon: Icons.person,
-                                          validator: (value) => value?.isEmpty == true ? 'Admin name is required' : null,
-                                        ),
-                                        const SizedBox(height: 20),
-                                        _buildTextField(
-                                          controller: _enrollController,
-                                          label: 'Admin Username',
-                                          icon: Icons.admin_panel_settings,
-                                          hint: 'e.g., ADMIN002',
-                                          validator: (value) => value?.isEmpty == true ? 'Admin username is required' : null,
-                                        ),
-                                        const SizedBox(height: 20),
-                                        _buildTextField(
-                                          controller: _adminPasswordController,
-                                          label: 'Admin Password',
-                                          icon: Icons.lock,
-                                          obscureText: true,
-                                          validator: (value) => value?.isEmpty == true ? 'Admin password is required' : null,
-                                        ),
-                                        const SizedBox(height: 20),
-                                        _buildTextField(
-                                          controller: _masterPasswordController,
-                                          label: 'Master Password',
-                                          icon: Icons.security,
-                                          hint: 'Admin_aids@smvec',
-                                          obscureText: true,
-                                          validator: (value) {
-                                            if (value?.isEmpty == true) return 'Master password is required';
-                                            if (value != 'Admin_aids@smvec') return 'Invalid master password';
-                                            return null;
-                                          },
-                                        ),
-                                      ] else ...[
+  _buildTextField(
+    controller: _adminNameController,
+    label: 'Admin Name',
+    icon: Icons.person,
+    validator: (value) => value?.isEmpty == true ? 'Admin name is required' : null,
+  ),
+  const SizedBox(height: 20),
+  _buildTextField(
+    controller: _enrollController,
+    label: 'Admin Username',
+    icon: Icons.admin_panel_settings,
+    hint: 'e.g., ADMIN002',
+    validator: (value) => value?.isEmpty == true ? 'Admin username is required' : null,
+  ),
+  const SizedBox(height: 20),
+  _buildTextField(
+    controller: _adminPasswordController,
+    label: 'Admin Password',
+    icon: Icons.lock,
+    obscureText: !_showAdminPassword,
+    validator: (value) => value?.isEmpty == true ? 'Admin password is required' : null,
+    suffixIcon: IconButton(
+      icon: Icon(
+        _showAdminPassword ? Icons.visibility : Icons.visibility_off,
+        color: Colors.white,
+      ),
+      onPressed: () {
+        setState(() {
+          _showAdminPassword = !_showAdminPassword;
+        });
+      },
+    ),
+  ),
+  const SizedBox(height: 20),
+  _buildTextField(
+    controller: _masterPasswordController,
+    label: 'Master Password',
+    icon: Icons.security,
+    hint: 'Admin_aids@smvec',
+    obscureText: !_showMasterPassword,
+    validator: (value) {
+      if (value?.isEmpty == true) return 'Master password is required';
+      if (value != 'Admin_aids@smvec') return 'Invalid master password';
+      return null;
+    },
+    suffixIcon: IconButton(
+      icon: Icon(
+        _showMasterPassword ? Icons.visibility : Icons.visibility_off,
+        color: Colors.white,
+      ),
+      onPressed: () {
+        setState(() {
+          _showMasterPassword = !_showMasterPassword;
+        });
+      },
+    ),
+  ),
+] else ...[
                                         _buildTextField(
                                           controller: _enrollController,
                                           label: widget.isAdminMode ? 'Admin Username' : 'Enrollment Number',
@@ -642,13 +666,24 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                       
                                       if (_isLogin || !widget.isAdminMode)
                                         _buildTextField(
-                                          controller: _passwordController,
-                                          label: 'Password',
-                                          icon: Icons.lock,
-                                          hint: widget.isAdminMode ? 'Admin_aids@smvec' : null,
-                                          obscureText: true,
-                                          validator: (value) => value?.isEmpty == true ? 'Password is required' : null,
-                                        ),
+  controller: _passwordController,
+  label: 'Password',
+  icon: Icons.lock,
+  hint: widget.isAdminMode ? 'Admin_aids@smvec' : null,
+  obscureText: !_showPassword,
+  validator: (value) => value?.isEmpty == true ? 'Password is required' : null,
+  suffixIcon: IconButton(
+    icon: Icon(
+      _showPassword ? Icons.visibility : Icons.visibility_off,
+      color: Colors.white,
+    ),
+    onPressed: () {
+      setState(() {
+        _showPassword = !_showPassword;
+      });
+    },
+  ),
+),
                                       
                                       const SizedBox(height: 32),
                                       
@@ -725,126 +760,137 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     );
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    String? hint,
-    bool obscureText = false,
-    String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscureText,
-      validator: validator,
-      style: const TextStyle(fontSize: 16, color: Colors.white),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        labelStyle: TextStyle(color: Colors.white.withOpacity(0.8)),
-        hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-        prefixIcon: Container(
-          margin: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: widget.isAdminMode 
-                  ? [Colors.red[400]!, Colors.red[600]!]
-                  : [Colors.blue[400]!, Colors.indigo[600]!],
-            ),
-            borderRadius: BorderRadius.circular(8),
+  // Update your _buildTextField method to accept a suffixIcon:
+Widget _buildTextField({
+  required TextEditingController controller,
+  required String label,
+  required IconData icon,
+  String? hint,
+  bool obscureText = false,
+  String? Function(String?)? validator,
+  Widget? suffixIcon, // <-- Add this
+}) {
+  return TextFormField(
+    controller: controller,
+    obscureText: obscureText,
+    validator: validator,
+    style: const TextStyle(fontSize: 16, color: Colors.white),
+    decoration: InputDecoration(
+      labelText: label,
+      hintText: hint,
+      labelStyle: TextStyle(color: Colors.white.withOpacity(0.8)),
+      hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+      prefixIcon: Container(
+        margin: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: widget.isAdminMode 
+                ? [Colors.red[400]!, Colors.red[600]!]
+                : [Colors.blue[400]!, Colors.indigo[600]!],
           ),
-          child: Icon(icon, color: Colors.white, size: 20),
+          borderRadius: BorderRadius.circular(8),
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.4)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.4)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: widget.isAdminMode ? Colors.red[400]! : Colors.blue[400]!, 
-            width: 2
-          ),
-        ),
-        filled: true,
-        fillColor: Colors.white.withOpacity(0.1),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Icon(icon, color: Colors.white, size: 20),
       ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.white.withOpacity(0.4)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.white.withOpacity(0.4)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: widget.isAdminMode ? Colors.red[400]! : Colors.blue[400]!, 
+          width: 2
+        ),
+      ),
+      filled: true,
+      fillColor: Colors.white.withOpacity(0.1),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      suffixIcon: suffixIcon, // <-- Add this
+    ),
+  );
+}
+
+Future<void> _handleSubmit() async {
+  if (!_formKey.currentState!.validate()) {
+    return;
+  }
+
+  final authService = Provider.of<AuthService>(context, listen: false);
+  bool success = false;
+
+  if (_isLogin) {
+    if (widget.isAdminMode) {
+      // Start the server before login
+      await authService.serverManager.startServer();
+    }
+    success = await authService.login(
+      _enrollController.text.trim(),
+      _passwordController.text,
+    );
+    // If admin login and success, wait 5 seconds then navigate
+    if (widget.isAdminMode && success) {
+      _showSuccess('Admin login successful! Starting server...');
+      await Future.delayed(const Duration(seconds: 5));
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const AdminDashboard()),
+        );
+      }
+      return;
+    }
+  } else if (widget.isAdminMode) {
+    success = await authService.registerAdmin(
+      name: _adminNameController.text.trim(),
+      username: _enrollController.text.trim(),
+      password: _adminPasswordController.text,
+      masterPassword: _masterPasswordController.text,
+    );
+    if (success) {
+      _showSuccess('Admin registration successful!');
+      // You can add navigation here if needed
+      return;
+    }
+  } else {
+    success = await authService.register(
+      name: _nameController.text.trim(),
+      enrollNumber: _enrollController.text.trim(),
+      year: _yearController.text.trim(),
+      section: _sectionController.text.trim().toUpperCase(),
+      batch: _batchController.text.trim(),
+      password: _passwordController.text,
     );
   }
 
-  Future<void> _handleSubmit() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
-    final authService = Provider.of<AuthService>(context, listen: false);
-    bool success;
-
-    if (_isLogin) {
-      success = await authService.login(
-        _enrollController.text.trim(),
-        _passwordController.text,
-      );
+  if (!success && mounted) {
+    String errorMessage;
+    if (widget.isAdminMode && !_isLogin) {
+      errorMessage = 'Admin registration failed. Check master password and try again.';
     } else if (widget.isAdminMode) {
-      success = await authService.registerAdmin(
-        name: _adminNameController.text.trim(),
-        username: _enrollController.text.trim(),
-        password: _adminPasswordController.text,
-        masterPassword: _masterPasswordController.text,
-      );
+      errorMessage = 'Admin login failed. Check credentials and server status.';
+    } else if (_isLogin) {
+      errorMessage = 'Student login failed. Make sure admin is logged in first.';
     } else {
-      success = await authService.register(
-        name: _nameController.text.trim(),
-        enrollNumber: _enrollController.text.trim(),
-        year: _yearController.text.trim(),
-        section: _sectionController.text.trim().toUpperCase(),
-        batch: _batchController.text.trim(),
-        password: _passwordController.text,
-      );
+      errorMessage = 'Registration failed. Check your details and try again.';
     }
-
-    if (!success && mounted) {
-      String errorMessage;
-      if (widget.isAdminMode && !_isLogin) {
-        errorMessage = 'Admin registration failed. Check master password and try again.';
-      } else if (widget.isAdminMode) {
-        errorMessage = 'Admin login failed. Check credentials and server status.';
-      } else if (_isLogin) {
-        errorMessage = 'Student login failed. Make sure admin is logged in first.';
-      } else {
-        errorMessage = 'Registration failed. Check your details and try again.';
+    _showError(errorMessage);
+  } else if (success && mounted && !widget.isAdminMode) {
+    _showSuccess(_isLogin ? 'Student login successful!' : 'Registration successful!');
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const StudentDashboard()),
+        );
       }
-      _showError(errorMessage);
-    } else if (success && mounted) {
-      // Handle successful authentication
-      if (widget.isAdminMode) {
-        _showSuccess('Admin login successful!');
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const AdminDashboard()),
-            );
-          }
-        });
-      } else {
-        _showSuccess(_isLogin ? 'Student login successful!' : 'Registration successful!');
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const StudentDashboard()),
-            );
-          }
-        });
-      }
-    }
+    });
   }
+}
   
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(

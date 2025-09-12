@@ -20,7 +20,9 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> {
   User? selectedUser;
   Map<String, dynamic> studentActivity = {};
   List<Map<String, dynamic>> studentExercises = [];
+  List<Map<String, dynamic>> studentActivities = []; // Store all student activities
   bool isLoadingExercises = false;
+  bool isLoadingActivities = false;
   Map<String, bool> expandedActivities = {}; // Track expanded state of activities
 
   @override
@@ -36,6 +38,23 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> {
       setState(() {
         studentActivity[data['userId']] = data;
       });
+      // Refresh activities if this is the selected student
+      if (selectedUser?.enrollNumber == data['userId']) {
+        _loadStudentActivities(selectedUser!.id);
+      }
+    });
+    
+    // Listen for test runs and submissions to update activity feed in real-time
+    socketService.socket?.on('test-run-completed', (data) {
+      if (selectedUser?.id == data['userId']) {
+        _loadStudentActivities(selectedUser!.id);
+      }
+    });
+    
+    socketService.socket?.on('submission-completed', (data) {
+      if (selectedUser?.id == data['userId']) {
+        _loadStudentActivities(selectedUser!.id);
+      }
     });
 
     socketService.socket?.on('student-screen', (data) {
@@ -166,6 +185,7 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> {
                                   selectedUser = user;
                                 });
                                 _loadStudentExercises(user.id);
+                                _loadStudentActivities(user.id);
                               },
                             );
                           },
@@ -260,9 +280,33 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> {
       });
     }
   }
+  
+  Future<void> _loadStudentActivities(int studentId) async {
+    setState(() {
+      isLoadingActivities = true;
+    });
+    
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final apiService = ApiService(authService);
+      
+      final activities = await apiService.getStudentActivities(studentId);
+      setState(() {
+        studentActivities = activities;
+      });
+    } catch (e) {
+      print('Error loading student activities: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading activities: $e')),
+      );
+    } finally {
+      setState(() {
+        isLoadingActivities = false;
+      });
+    }
+  }
 
   Widget _buildStudentMonitor() {
-    final activity = studentActivity[selectedUser!.enrollNumber];
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -313,14 +357,14 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> {
                 const TabBar(
                   tabs: [
                     Tab(text: 'Exercises', icon: Icon(Icons.assignment)),
-                    Tab(text: 'Activity', icon: Icon(Icons.timeline)),
+                    Tab(text: 'Live Activity', icon: Icon(Icons.timeline)),
                   ],
                 ),
                 Expanded(
                   child: TabBarView(
                     children: [
                       _buildExercisesList(),
-                      _buildActivityFeed(activity),
+                      _buildLiveActivityFeed(),
                     ],
                   ),
                 ),
@@ -415,82 +459,219 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> {
     );
   }
   
-  Widget _buildActivityFeed(Map<String, dynamic>? activity) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Recent Activity',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
+  Widget _buildLiveActivityFeed() {
+    if (isLoadingActivities) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    
+    if (studentActivities.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.timeline_outlined, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('No activities found', style: TextStyle(fontSize: 18, color: Colors.grey)),
+            SizedBox(height: 8),
+            Text('Activities will appear here when the student runs code or submits solutions', 
+                 style: TextStyle(fontSize: 14, color: Colors.grey),
+                 textAlign: TextAlign.center),
+          ],
+        ),
+      );
+    }
+    
+    return RefreshIndicator(
+      onRefresh: () => _loadStudentActivities(selectedUser!.id),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: studentActivities.length,
+        itemBuilder: (context, index) {
+          final activity = studentActivities[index];
+          final activityKey = 'activity_${activity['id']}';
+          final isExpanded = expandedActivities[activityKey] ?? false;
           
-          if (activity != null) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              children: [
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      expandedActivities[activityKey] = !isExpanded;
+                    });
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.code, color: Colors.blue),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Code Execution',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        // Header with activity type and subject
+                        Row(
+                          children: [
+                            Icon(
+                              activity['activity_type'] == 'submission'
+                                  ? Icons.send
+                                  : Icons.play_arrow,
+                              size: 20,
+                              color: activity['activity_type'] == 'submission'
+                                  ? Colors.green
+                                  : Colors.blue,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Subject: ${activity['subject_name'] ?? 'Unknown'}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Question: ${activity['exercise_title'] ?? 'Unknown Exercise'}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              _formatDateTime(activity['created_at']),
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(
+                              isExpanded ? Icons.expand_less : Icons.expand_more,
+                              color: Colors.grey,
+                            ),
+                          ],
                         ),
-                        const Spacer(),
-                        Text(
-                          _formatTime(activity['timestamp']),
-                          style: const TextStyle(color: Colors.grey),
+                        const SizedBox(height: 12),
+                        
+                        // Activity details row
+                        Row(
+                          children: [
+                            // Activity type badge
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: activity['activity_type'] == 'submission'
+                                    ? Colors.green.withOpacity(0.1)
+                                    : Colors.blue.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: activity['activity_type'] == 'submission'
+                                      ? Colors.green
+                                      : Colors.blue,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                activity['activity_type'] == 'submission' ? 'SUBMITTED' : 'TEST RUN',
+                                style: TextStyle(
+                                  color: activity['activity_type'] == 'submission'
+                                      ? Colors.green[700]
+                                      : Colors.blue[700],
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            
+                            // Status badge
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: activity['status'] == 'passed' 
+                                    ? Colors.green.withOpacity(0.1)
+                                    : activity['status'] == 'failed'
+                                        ? Colors.red.withOpacity(0.1)
+                                        : Colors.orange.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: activity['status'] == 'passed' 
+                                      ? Colors.green
+                                      : activity['status'] == 'failed'
+                                          ? Colors.red
+                                          : Colors.orange,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                activity['status'].toString().toUpperCase(),
+                                style: TextStyle(
+                                  color: activity['status'] == 'passed' 
+                                      ? Colors.green[700]
+                                      : activity['status'] == 'failed'
+                                          ? Colors.red[700]
+                                          : Colors.orange[700],
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            
+                            // Test cases passed
+                            if (activity['tests_passed'] != null && activity['total_tests'] != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.purple.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.purple, width: 1),
+                                ),
+                                child: Text(
+                                  'Tests: ${activity['tests_passed']}/${activity['total_tests']}',
+                                  style: TextStyle(
+                                    color: Colors.purple[700],
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            
+                            // Score for submissions
+                            if (activity['activity_type'] == 'submission' && activity['score'] != null) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.amber, width: 1),
+                                ),
+                                child: Text(
+                                  'Score: ${activity['score']}%',
+                                  style: TextStyle(
+                                    color: Colors.amber[700],
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Text('Exercise ID: ${activity['data']['exerciseId']}'),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
-                      child: Text(
-                        activity['data']['code'],
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 12,
-                        ),
-                        maxLines: 10,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+                if (isExpanded) ...[
+                  const Divider(height: 1),
+                  _buildActivityCodeDisplay(activity),
+                ],
+              ],
             ),
-          ] else ...[
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline),
-                    SizedBox(width: 8),
-                    Text('No recent activity'),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ],
+          );
+        },
       ),
     );
   }
@@ -657,7 +838,7 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> {
                           ),
                           if (isExpanded) ...[
                             const Divider(height: 1),
-                            _buildCodeDisplay(activity),
+                            _buildActivityCodeDisplay(activity),
                           ],
                         ],
                       ),
@@ -701,7 +882,7 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> {
     }
   }
   
-  Widget _buildCodeDisplay(Map<String, dynamic> activity) {
+  Widget _buildActivityCodeDisplay(Map<String, dynamic> activity) {
     // Get code from test_results or from a direct code field
     String? code;
     

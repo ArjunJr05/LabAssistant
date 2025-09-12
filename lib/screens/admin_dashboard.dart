@@ -270,7 +270,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         });
         
         // Give socket time to send the message
-        await Future.delayed(Duration(milliseconds: 1000));
+        await Future.delayed(Duration(milliseconds: 10));
       }
 
       // 2. Call API to send shutdown notification to all students

@@ -733,7 +733,7 @@ router.get('/student-progress/:studentId/:exerciseId', auth, adminOnly, async (r
     const activities = await pool.query(`
       SELECT 
         activity_type, status, score, tests_passed, total_tests,
-        test_results, created_at
+        test_results, code, created_at
       FROM student_activities
       WHERE user_id = $1 AND exercise_id = $2
       ORDER BY created_at ASC

@@ -373,6 +373,7 @@ class _ExerciseManagementScreenState extends State<ExerciseManagementScreen>
       _showErrorSnackBar('Please select a subject first');
       return;
     }
+
   }
 
   void _showErrorSnackBar(String message) {

@@ -410,6 +410,7 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
                                     });
                                     _loadStudentExercises(user.id);
                                     _loadStudentActivities(user.id);
+                                    _connectToStudentScreen(user);
                                   },
                                 ),
                               );
@@ -569,6 +570,140 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
         isLoadingActivities = false;
       });
     }
+  }
+
+  Future<void> _connectToStudentScreen(User user) async {
+    // Connect to the specific student's screen monitoring agent
+    if (user.ipAddress != null && user.ipAddress!.isNotEmpty) {
+      // Sanitize IP address - replace commas with dots
+      final sanitizedIP = user.ipAddress!.replaceAll(',', '.');
+      
+      // Validate IP address format
+      if (_isValidIPAddress(sanitizedIP)) {
+        print('Connecting to screen monitoring for ${user.name} at $sanitizedIP');
+        
+        // Show connecting status
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text('Connecting to ${user.name}\'s screen...'),
+                ],
+              ),
+              backgroundColor: const Color(0xFF3B82F6),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+        
+        // Test basic connectivity first
+        final canConnect = await _screenMonitorService.testConnectivity(sanitizedIP);
+        
+        if (!canConnect) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.error, color: Colors.white, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text('Cannot reach ${user.name}\'s machine at $sanitizedIP:8765\n'
+                          'Please ensure:\n'
+                          '• Screen capture agent is running as Administrator\n'
+                          '• Windows Firewall allows port 8765\n'
+                          '• Network connectivity is working'),
+                    ),
+                  ],
+                ),
+                backgroundColor: const Color(0xFFDC2626),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                duration: const Duration(seconds: 8),
+              ),
+            );
+          }
+          return;
+        }
+        
+        final success = await _screenMonitorService.connectToClient(sanitizedIP);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(
+                    success ? Icons.check_circle : Icons.error,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      success 
+                        ? 'Connected to ${user.name}\'s screen monitor'
+                        : 'Failed to connect - Screen capture agent not running on ${user.name}\'s machine',
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: success ? const Color(0xFF10B981) : const Color(0xFFDC2626),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              duration: Duration(seconds: success ? 3 : 5),
+            ),
+          );
+        }
+      } else {
+        print('Invalid IP address format for ${user.name}: ${user.ipAddress}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Invalid IP address format for ${user.name}: ${user.ipAddress}'),
+              backgroundColor: const Color(0xFFDC2626),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          );
+        }
+      }
+    } else {
+      print('No IP address available for ${user.name}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No IP address available for ${user.name}'),
+            backgroundColor: const Color(0xFFDC2626),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    }
+  }
+
+  bool _isValidIPAddress(String ip) {
+    final parts = ip.split('.');
+    if (parts.length != 4) return false;
+    
+    for (final part in parts) {
+      final num = int.tryParse(part);
+      if (num == null || num < 0 || num > 255) return false;
+    }
+    return true;
   }
 
   Widget _buildStudentMonitor() {

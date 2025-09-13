@@ -18,16 +18,23 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
   @override
   void initState() {
     super.initState();
+    // Use the singleton instance instead of creating a new one
     _screenService = ScreenMonitorService();
-    _screenService.startService();
     
-    // Listen to frame updates
+    // Listen to frame updates with debug logging
     _screenService.frameStream.listen((frame) {
+      print('ScreenMonitorWidget: Received frame from ${frame.clientId}, size: ${frame.imageData.length} bytes');
       if (mounted) {
         setState(() {
           _frameCache[frame.clientId] = frame.imageData;
         });
+        print('ScreenMonitorWidget: Frame cached for ${frame.clientId}, total cached: ${_frameCache.length}');
       }
+    });
+    
+    // Listen to connection status
+    _screenService.connectionStatusStream.listen((status) {
+      print('ScreenMonitorWidget: Connection status: $status');
     });
   }
 

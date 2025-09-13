@@ -393,6 +393,7 @@ Future<void> _refreshCompletionStatus() async {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         elevation: 0,
         backgroundColor: const Color(0xFF1E40AF),
         foregroundColor: Colors.white,

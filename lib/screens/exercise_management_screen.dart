@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:labassistant/models/excercise_model.dart';
-import 'package:labassistant/screens/create.dart';
+import 'package:labassistant/screens/create_exercise_screen.dart';
 import 'package:labassistant/services/api_services.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';

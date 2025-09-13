@@ -87,6 +87,34 @@ router.post('/subjects', auth, adminOnly, async (req, res) => {
 // Enhanced create exercise with visible/hidden test case separation
 router.post('/exercises', auth, adminOnly, async (req, res) => {
   try {
+    console.log('\n=== RAW REQUEST BODY ===');
+    console.log('Request body type:', typeof req.body);
+    console.log('Request body exists:', req.body !== undefined);
+    console.log('Request body is null:', req.body === null);
+    console.log('Request headers:', req.headers);
+    
+    // Check if body is properly parsed
+    if (!req.body || typeof req.body !== 'object') {
+      console.error('❌ Request body is not a valid object:', req.body);
+      return res.status(400).json({ 
+        message: 'Invalid request body format',
+        error: 'Request body must be a valid JSON object',
+        received: typeof req.body
+      });
+    }
+    
+    // Convert body to string and check for [object Object]
+    const bodyStr = JSON.stringify(req.body);
+    if (bodyStr.includes('[object Object]')) {
+      console.error('❌ Found [object Object] in request body - serialization error');
+      return res.status(400).json({ 
+        message: 'Request body contains improperly serialized objects',
+        error: 'Frontend serialization error - objects not properly converted to JSON'
+      });
+    }
+    
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    
     const { 
       subject_id, 
       title, 
@@ -103,23 +131,32 @@ router.post('/exercises', auth, adminOnly, async (req, res) => {
     console.log('Title:', title);
     console.log('Visible test cases:', test_cases ? test_cases.length : 0);
     console.log('Hidden test cases:', hidden_test_cases ? hidden_test_cases.length : 0);
+    console.log('Raw test_cases:', JSON.stringify(test_cases, null, 2));
+    console.log('Raw hidden_test_cases:', JSON.stringify(hidden_test_cases, null, 2));
     
     if (!subject_id || !title || !description || !test_cases) {
       return res.status(400).json({ message: 'All required fields must be provided' });
     }
     
-    // Validate that exactly 3 visible test cases are provided
-    if (!Array.isArray(test_cases) || test_cases.length !== 3) {
+    // Validate that at least 1 visible test case is provided (flexible requirement)
+    if (!Array.isArray(test_cases) || test_cases.length === 0) {
       return res.status(400).json({ 
-        message: 'Exactly 3 visible test cases are required for students to practice with' 
+        message: 'At least 1 visible test case is required for students to practice with' 
       });
     }
     
-    // Validate that at least some test cases exist
-    const totalTestCases = test_cases.length + (hidden_test_cases ? hidden_test_cases.length : 0);
-    if (totalTestCases < 3) {
+    // Validate maximum of 3 visible test cases
+    if (test_cases.length > 3) {
       return res.status(400).json({ 
-        message: 'At least 3 total test cases are required (3 visible + 0 or more hidden)' 
+        message: 'Maximum 3 visible test cases are allowed' 
+      });
+    }
+    
+    // Validate that at least 1 total test case exists
+    const totalTestCases = test_cases.length + (hidden_test_cases ? hidden_test_cases.length : 0);
+    if (totalTestCases < 1) {
+      return res.status(400).json({ 
+        message: 'At least 1 test case is required' 
       });
     }
     
@@ -127,8 +164,8 @@ router.post('/exercises', auth, adminOnly, async (req, res) => {
     const validateTestCases = (testCases, type) => {
       for (let i = 0; i < testCases.length; i++) {
         const tc = testCases[i];
-        if (!tc.hasOwnProperty('input') || !tc.hasOwnProperty('expectedOutput') && !tc.hasOwnProperty('expected_output')) {
-          throw new Error(`${type} test case ${i + 1} is missing required fields (input, expectedOutput)`);
+        if (!tc.hasOwnProperty('input') || (!tc.hasOwnProperty('expectedOutput') && !tc.hasOwnProperty('expected_output'))) {
+          throw new Error(`${type} test case ${i + 1} is missing required fields (input, expectedOutput or expected_output)`);
         }
       }
     };
@@ -138,6 +175,20 @@ router.post('/exercises', auth, adminOnly, async (req, res) => {
       validateTestCases(hidden_test_cases, 'Hidden');
     }
     
+    // Normalize test cases to ensure proper structure
+    const normalizedTestCases = test_cases.map(tc => ({
+      input: tc.input ? tc.input.toString() : '',
+      expected_output: tc.expected_output ? tc.expected_output.toString() : (tc.expectedOutput ? tc.expectedOutput.toString() : '')
+    }));
+
+    const normalizedHiddenTestCases = (hidden_test_cases || []).map(tc => ({
+      input: tc.input ? tc.input.toString() : '',
+      expected_output: tc.expected_output ? tc.expected_output.toString() : (tc.expectedOutput ? tc.expectedOutput.toString() : '')
+    }));
+
+    console.log('Normalized test_cases:', normalizedTestCases);
+    console.log('Normalized hidden_test_cases:', normalizedHiddenTestCases);
+
     const result = await pool.query(`
       INSERT INTO exercises (
         subject_id, title, description, input_format, output_format, 
@@ -151,8 +202,8 @@ router.post('/exercises', auth, adminOnly, async (req, res) => {
       input_format || null,
       output_format || null,
       constraints || null,
-      JSON.stringify(test_cases),                    // Visible test cases (exactly 3)
-      JSON.stringify(hidden_test_cases || []),       // Hidden test cases (unlimited)
+      JSON.stringify(normalizedTestCases),
+      JSON.stringify(normalizedHiddenTestCases),
       difficulty_level || 'medium'
     ]);
     

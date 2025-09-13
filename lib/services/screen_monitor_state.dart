@@ -32,9 +32,7 @@ class ScreenMonitorState extends ChangeNotifier {
 
   // New method to exit fullscreen (returns to grid view)
   void exitFullscreen() {
-    final previousClient = _fullscreenClientId;
     _fullscreenClientId = null;
-    print('ScreenMonitorState: Exited fullscreen mode for client $previousClient');
     notifyListeners();
   }
 

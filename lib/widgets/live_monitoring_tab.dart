@@ -52,12 +52,7 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
     return AnimatedBuilder(
       animation: _monitorState,
       builder: (context, child) {
-        // If in fullscreen mode, show the fullscreen view
-        if (_monitorState.fullscreenClientId != null) {
-          return _buildFullscreenView();
-        }
-
-        // Otherwise show the main live monitoring interface
+        // Show the main live monitoring interface
         return Column(
           children: [
             // Header with online students count
@@ -348,105 +343,6 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
     );
   }
 
-  Widget _buildFullscreenView() {
-    final connectedClients = _screenService.connectedClients;
-    final client = connectedClients.firstWhere(
-      (c) => c.id == _monitorState.fullscreenClientId,
-      orElse: () => ClientInfo(
-        id: '',
-        computerName: 'Unknown',
-        userName: 'Unknown',
-        ipAddress: '',
-        resolution: '',
-        captureResolution: '',
-        fps: 0,
-        isConnected: false,
-        lastSeen: DateTime.now(),
-      ),
-    );
-    final hasFrame = _monitorState.frameCache.containsKey(_monitorState.fullscreenClientId);
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(0),
-        child: Container(),
-      ),
-      body: Stack(
-        children: [
-          // Fullscreen image
-          SizedBox.expand(
-            child: hasFrame
-                ? InteractiveViewer(
-                    panEnabled: true,
-                    scaleEnabled: true,
-                    minScale: 0.5,
-                    maxScale: 3.0,
-                    child: Image.memory(
-                      _monitorState.frameCache[_monitorState.fullscreenClientId]!,
-                      fit: BoxFit.contain,
-                      width: double.infinity,
-                      height: double.infinity,
-                      gaplessPlayback: true,
-                      filterQuality: FilterQuality.medium,
-                      key: ValueKey('fullscreen_${_monitorState.fullscreenClientId}'),
-                    ),
-                  )
-                : const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(color: Colors.white),
-                        SizedBox(height: 16),
-                        Text(
-                          'Loading screen...',
-                          style: TextStyle(color: Colors.white, fontSize: 18),
-                        ),
-                      ],
-                    ),
-                  ),
-          ),
-          
-          // Floating controls
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            left: 8,
-            right: 8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.7),
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${client.computerName} - ${client.userName}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  // Exit fullscreen button
-                  IconButton(
-                    onPressed: () => _monitorState.exitFullscreen(),
-                    icon: const Icon(Icons.fullscreen_exit, color: Colors.white),
-                    splashRadius: 20,
-                    tooltip: 'Return to grid view',
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _connectToStudent(User student) async {
     print('LiveMonitoringTab: Attempting to connect to student: ${student.name} with IP: ${student.ipAddress}');
@@ -473,7 +369,6 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
     );
 
     if (existingClient.id.isNotEmpty) {
-      // Already connected, just show in the monitoring area (don't go fullscreen immediately)
       print('LiveMonitoringTab: Already connected to ${student.ipAddress}');
       _showSnackBar('Monitoring ${student.name}', const Color(0xFF10B981));
       return;
@@ -685,32 +580,6 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                           ),
                         ),
                   
-                  // Fullscreen button overlay
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(6),
-                          onTap: () => _monitorState.enterFullscreen(client.id),
-                          child: const Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: Icon(
-                              Icons.fullscreen,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),

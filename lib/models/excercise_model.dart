@@ -221,7 +221,7 @@ class TestCase {
   Map<String, dynamic> toJson() {
     return {
       'input': input,
-      'expectedOutput': expectedOutput,
+      'expected_output': expectedOutput,
     };
   }
 }

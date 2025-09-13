@@ -26,7 +26,29 @@ app.set('io', io);
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+
+// Request logging middleware for admin routes
+app.use('/api/admin', (req, res, next) => {
+  console.log(`\n=== ${req.method} ${req.path} ===`);
+  console.log('Content-Type:', req.headers['content-type']);
+  console.log('Content-Length:', req.headers['content-length']);
+  next();
+});
+
+// Enhanced JSON parsing middleware with error handling
+app.use(express.json({ 
+  limit: '10mb',
+  verify: (req, res, buf, encoding) => {
+    try {
+      JSON.parse(buf);
+    } catch (e) {
+      console.error('JSON Parse Error:', e.message);
+      console.error('Raw body:', buf.toString());
+      throw new Error('Invalid JSON in request body');
+    }
+  }
+}));
+
 app.use(express.urlencoded({ extended: true }));
 
 // Trust proxy to get real IP addresses

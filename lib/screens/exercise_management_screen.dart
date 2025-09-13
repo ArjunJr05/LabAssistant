@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:labassistant/models/excercise_model.dart';
-import 'package:labassistant/screens/create_exercise_screen.dart';
 import 'package:labassistant/services/api_services.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
@@ -374,13 +373,6 @@ class _ExerciseManagementScreenState extends State<ExerciseManagementScreen>
       _showErrorSnackBar('Please select a subject first');
       return;
     }
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => CreateExerciseScreen(subject: selectedSubject!),
-      ),
-    ).then((_) => _loadExercises(selectedSubject!.id));
   }
 
   void _showErrorSnackBar(String message) {

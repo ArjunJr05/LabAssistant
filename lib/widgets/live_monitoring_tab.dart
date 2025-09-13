@@ -233,30 +233,13 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
   }
 
   Widget _buildStudentTile(User student, bool isConnected) {
-    final connectedClients = _screenService.connectedClients;
-    final matchingClient = connectedClients.firstWhere(
-      (client) => 
-          client.userName.toLowerCase() == student.name.toLowerCase() ||
-          client.computerName.toLowerCase().contains(student.enrollNumber.toLowerCase()),
-      orElse: () => connectedClients.isNotEmpty ? connectedClients.first : ClientInfo(
-        id: '',
-        computerName: '',
-        userName: '',
-        ipAddress: '',
-        resolution: '',
-        captureResolution: '',
-        fps: 0,
-        isConnected: false,
-        lastSeen: DateTime.now(),
-      ),
-    );
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: isConnected ? () => _openStudentFullscreen(matchingClient.id) : null,
+          onTap: () => _connectToStudent(student),
           borderRadius: BorderRadius.circular(8),
           child: Container(
             padding: const EdgeInsets.all(12),
@@ -440,7 +423,82 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
     );
   }
 
-  void _openStudentFullscreen(String clientId) {
-    _monitorState.setFullscreenClient(clientId);
+  void _connectToStudent(User student) async {
+    print('LiveMonitoringTab: Attempting to connect to student: ${student.name} with IP: ${student.ipAddress}');
+    
+    if (student.ipAddress == null || student.ipAddress!.isEmpty || student.ipAddress == 'unknown') {
+      _showSnackBar('No IP address available for ${student.name}', Colors.orange);
+      return;
+    }
+
+    // Check if already connected to this IP
+    final existingClient = _screenService.connectedClients.firstWhere(
+      (client) => client.ipAddress == student.ipAddress,
+      orElse: () => ClientInfo(
+        id: '',
+        computerName: '',
+        userName: '',
+        ipAddress: '',
+        resolution: '',
+        captureResolution: '',
+        fps: 0,
+        isConnected: false,
+        lastSeen: DateTime.now(),
+      ),
+    );
+
+    if (existingClient.id.isNotEmpty) {
+      // Already connected, go to fullscreen
+      print('LiveMonitoringTab: Already connected to ${student.ipAddress}, opening fullscreen');
+      _monitorState.setFullscreenClient(existingClient.id);
+      return;
+    }
+
+    // Attempt to connect
+    _showSnackBar('Connecting to ${student.name}...', const Color(0xFF3B82F6));
+    
+    final success = await _screenService.connectToClient(student.ipAddress!);
+    
+    if (success) {
+      _showSnackBar('Connected to ${student.name}', const Color(0xFF10B981));
+      
+      // Wait a moment for the client to be added to the list, then open fullscreen
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      final newClient = _screenService.connectedClients.firstWhere(
+        (client) => client.ipAddress == student.ipAddress,
+        orElse: () => ClientInfo(
+          id: '',
+          computerName: '',
+          userName: '',
+          ipAddress: '',
+          resolution: '',
+          captureResolution: '',
+          fps: 0,
+          isConnected: false,
+          lastSeen: DateTime.now(),
+        ),
+      );
+      
+      if (newClient.id.isNotEmpty) {
+        _monitorState.setFullscreenClient(newClient.id);
+      }
+    } else {
+      _showSnackBar('Failed to connect to ${student.name}', const Color(0xFFEF4444));
+    }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: color,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 }

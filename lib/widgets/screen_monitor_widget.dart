@@ -24,13 +24,9 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
     // Listen to frame updates with debug logging
     _screenService.frameStream.listen((frame) {
       print('ScreenMonitorWidget: Received frame from ${frame.clientId}, size: ${frame.imageData.length} bytes, dimensions: ${frame.width}x${frame.height}');
-      if (mounted) {
-        _monitorState.updateFrame(frame.clientId, frame.imageData);
-        print('ScreenMonitorWidget: Frame cached for ${frame.clientId}, total cached: ${_monitorState.frameCache.length}');
-        print('ScreenMonitorWidget: Triggering UI rebuild...');
-      } else {
-        print('ScreenMonitorWidget: Widget not mounted, skipping frame update');
-      }
+      _monitorState.updateFrame(frame.clientId, frame.imageData);
+      print('ScreenMonitorWidget: Frame cached for ${frame.clientId}, total cached: ${_monitorState.frameCache.length}');
+      print('ScreenMonitorWidget: Triggering UI rebuild...');
     }, onError: (error) {
       print('ScreenMonitorWidget: Frame stream error: $error');
     });
@@ -196,6 +192,8 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
                               gaplessPlayback: true,
                               width: double.infinity,
                               height: double.infinity,
+                              filterQuality: FilterQuality.medium,
+                              key: ValueKey('${client.id}_frame'),
                             ),
                           )
                         : const Center(
@@ -429,7 +427,7 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
                   ),
                   IconButton(
                     onPressed: () => _monitorState.setFullscreenClient(null),
-                    icon: const Icon(Icons.fullscreen_exit, color: Colors.white),
+                    icon: const Icon(Icons.minimize, color: Colors.white),
                     splashRadius: 20,
                   ),
                 ],

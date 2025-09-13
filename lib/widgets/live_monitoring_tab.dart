@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
+import '../models/user_model.dart';
 import '../services/screen_monitor_service.dart';
 import '../services/screen_monitor_state.dart';
-import '../models/user_model.dart';
-import 'screen_monitor_widget.dart';
 
 class LiveMonitoringTab extends StatefulWidget {
   final List<User> onlineUsers;
@@ -22,6 +21,19 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
     super.initState();
     _screenService = ScreenMonitorService();
     _monitorState = ScreenMonitorState();
+    
+    // Listen to frame updates
+    _screenService.frameStream.listen((frame) {
+      print('LiveMonitoringTab: Received frame from ${frame.clientId}, size: ${frame.imageData.length} bytes');
+      _monitorState.updateFrame(frame.clientId, frame.imageData);
+    }, onError: (error) {
+      print('LiveMonitoringTab: Frame stream error: $error');
+    });
+    
+    // Listen to client connections
+    _screenService.clientsStream.listen((clients) {
+      print('LiveMonitoringTab: Connected clients: ${clients.map((c) => '${c.id}@${c.ipAddress}').join(', ')}');
+    });
   }
 
   @override
@@ -52,10 +64,10 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                   ),
                   const SizedBox(width: 16),
                   
-                  // Right side: Screen monitoring grid
+                  // Right panel - Screen monitoring
                   Expanded(
                     flex: 2,
-                    child: const ScreenMonitorWidget(),
+                    child: _buildMonitoringPanel(),
                   ),
                 ],
               ),
@@ -368,6 +380,7 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                       height: double.infinity,
                       gaplessPlayback: true,
                       filterQuality: FilterQuality.medium,
+                      key: ValueKey('fullscreen_${_monitorState.fullscreenClientId}'),
                     ),
                   )
                 : const Center(
@@ -411,7 +424,7 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                   ),
                   IconButton(
                     onPressed: () => _monitorState.setFullscreenClient(null),
-                    icon: const Icon(Icons.fullscreen_exit, color: Colors.white),
+                    icon: const Icon(Icons.minimize, color: Colors.white),
                     splashRadius: 20,
                   ),
                 ],
@@ -448,9 +461,9 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
     );
 
     if (existingClient.id.isNotEmpty) {
-      // Already connected, go to fullscreen
-      print('LiveMonitoringTab: Already connected to ${student.ipAddress}, opening fullscreen');
-      _monitorState.setFullscreenClient(existingClient.id);
+      // Already connected, just show in the monitoring area (don't go fullscreen immediately)
+      print('LiveMonitoringTab: Already connected to ${student.ipAddress}');
+      _showSnackBar('Monitoring ${student.name}', const Color(0xFF10B981));
       return;
     }
 
@@ -461,31 +474,317 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
     
     if (success) {
       _showSnackBar('Connected to ${student.name}', const Color(0xFF10B981));
-      
-      // Wait a moment for the client to be added to the list, then open fullscreen
-      await Future.delayed(const Duration(milliseconds: 500));
-      
-      final newClient = _screenService.connectedClients.firstWhere(
-        (client) => client.ipAddress == student.ipAddress,
-        orElse: () => ClientInfo(
-          id: '',
-          computerName: '',
-          userName: '',
-          ipAddress: '',
-          resolution: '',
-          captureResolution: '',
-          fps: 0,
-          isConnected: false,
-          lastSeen: DateTime.now(),
-        ),
-      );
-      
-      if (newClient.id.isNotEmpty) {
-        _monitorState.setFullscreenClient(newClient.id);
-      }
     } else {
       _showSnackBar('Failed to connect to ${student.name}', const Color(0xFFEF4444));
     }
+  }
+
+  Widget _buildMonitoringPanel() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            offset: const Offset(0, 4),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.monitor, color: Color(0xFF3B82F6)),
+                const SizedBox(width: 8),
+                const Text(
+                  'Live Screen Monitoring',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+                const Spacer(),
+                StreamBuilder<String>(
+                  stream: _screenService.connectionStatusStream,
+                  builder: (context, snapshot) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.circle, color: Color(0xFF10B981), size: 8),
+                          const SizedBox(width: 6),
+                          Text(
+                            snapshot.data ?? 'Ready',
+                            style: const TextStyle(
+                              color: Color(0xFF10B981),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          
+          // Screen grid
+          Expanded(
+            child: _buildScreenGrid(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScreenGrid() {
+    return StreamBuilder<List<ClientInfo>>(
+      stream: _screenService.clientsStream,
+      builder: (context, snapshot) {
+        final clients = snapshot.data ?? [];
+        
+        if (clients.isEmpty) {
+          return _buildEmptyState();
+        }
+
+        return GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: _calculateGridColumns(clients.length),
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: 16 / 9,
+          ),
+          itemCount: clients.length,
+          itemBuilder: (context, index) {
+            final client = clients[index];
+            return _buildScreenTile(client);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildScreenTile(ClientInfo client) {
+    final hasFrame = _monitorState.frameCache.containsKey(client.id);
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0x0A000000),
+            offset: const Offset(0, 4),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Screen display area
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                color: Color(0xFF1E293B),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+              ),
+              child: Stack(
+                children: [
+                  // Screen content
+                  hasFrame
+                      ? ClipRRect(
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                          child: Image.memory(
+                            _monitorState.frameCache[client.id]!,
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                            width: double.infinity,
+                            height: double.infinity,
+                            filterQuality: FilterQuality.medium,
+                            key: ValueKey('${client.id}_frame'),
+                            errorBuilder: (context, error, stackTrace) {
+                              print('Image error for ${client.id}: $error');
+                              return const Center(
+                                child: Text('Image Error', style: TextStyle(color: Colors.red)),
+                              );
+                            },
+                          ),
+                        )
+                      : Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.monitor_outlined,
+                                color: Color(0xFF64748B),
+                                size: 48,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Client: ${client.id}\nIP: ${client.ipAddress}\nFrames: ${_monitorState.frameCache.containsKey(client.id) ? 'Available' : 'None'}',
+                                style: const TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 12,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+                  
+                  // Fullscreen button overlay
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(6),
+                          onTap: () => _monitorState.setFullscreenClient(client.id),
+                          child: const Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: Icon(
+                              Icons.fullscreen,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          // Client info footer
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        client.computerName.isNotEmpty ? client.computerName : 'Unknown Computer',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E293B),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        client.userName.isNotEmpty ? client.userName : 'Unknown User',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF64748B),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    'LIVE',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF10B981),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(
+              Icons.monitor_outlined,
+              size: 64,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'No screens connected',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF475569),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Click on a student to connect and monitor their screen\n\nDebug Info:\n- Connected clients: ${_screenService.connectedClients.length}\n- Frame cache: ${_monitorState.frameCache.length} items',
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF64748B),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  int _calculateGridColumns(int clientCount) {
+    if (clientCount <= 1) return 1;
+    if (clientCount <= 4) return 2;
+    if (clientCount <= 9) return 3;
+    return 4;
   }
 
   void _showSnackBar(String message, Color color) {

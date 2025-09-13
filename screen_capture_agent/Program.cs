@@ -14,7 +14,7 @@ namespace ScreenCaptureAgent
 {
     class Program
     {
-        private const int TARGET_FPS = 10;
+        private const int TARGET_FPS = 30;
         private const int CAPTURE_WIDTH = 1280;
         private const int CAPTURE_HEIGHT = 720;
         private const int WEBSOCKET_PORT = 8765;
@@ -176,6 +176,23 @@ namespace ScreenCaptureAgent
                 {
                     case "ping":
                         await SendJsonMessage(webSocket, new { type = "pong" });
+                        break;
+                    case "start_capture":
+                        Console.WriteLine("Received start_capture command from admin");
+                        // Restart capture timer with new settings if provided
+                        int fps = msg.fps != null ? (int)msg.fps : TARGET_FPS;
+                        _captureTimer?.Dispose();
+                        _captureTimer = new System.Threading.Timer(
+                            async _ => await CaptureAndSendScreen(webSocket), 
+                            null, 
+                            TimeSpan.Zero, 
+                            TimeSpan.FromMilliseconds(1000.0 / fps)
+                        );
+                        Console.WriteLine($"Screen capture started at {fps} FPS");
+                        break;
+                    case "stop_capture":
+                        Console.WriteLine("Received stop_capture command from admin");
+                        _captureTimer?.Dispose();
                         break;
                 }
             }

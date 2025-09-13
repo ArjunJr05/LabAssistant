@@ -459,58 +459,28 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> _updateStudentIpAddress() async {
-    if (_user?.role != 'student' || _token == null) {
-      print('❌ Cannot update IP address - not a student or no token');
-      return;
-    }
-
     try {
-      print('🌐 Fetching device IP addresses for student...');
+      print('AuthService: Starting IP address update...');
       
-      // Get both local and public IP addresses
+      // Get device IP addresses
       final ipAddresses = await NetworkHelper.getDeviceIpAddresses();
-      final localIp = ipAddresses['localIp'];
-      final publicIp = ipAddresses['publicIp'];
+      print('AuthService: Retrieved IP addresses: $ipAddresses');
       
-      if (localIp == null && publicIp == null) {
-        print('❌ No IP addresses found - skipping update');
+      if (ipAddresses.isEmpty) {
+        print('AuthService: No IP addresses found, skipping update');
         return;
       }
-
-      // Send IP addresses to backend
-      final apiUrl = await ConfigService.getApiBaseUrl();
-      print('📡 Updating student IP addresses in database...');
       
-      final response = await http.post(
-        Uri.parse('$apiUrl/api/students/update-ip'),
-        headers: authHeaders,
-        body: json.encode({
-          'enrollNumber': _user?.enrollNumber,
-          'localIp': localIp,
-          'publicIp': publicIp,
-          'timestamp': DateTime.now().toIso8601String(),
-        }),
-      );
-
-      print('📡 IP Update Response Status: ${response.statusCode}');
-      print('📡 IP Update Response Body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        print('✅ Student IP addresses updated successfully');
-        print('   Local IP: ${localIp ?? 'Not available'}');
-        print('   Public IP: ${publicIp ?? 'Not available'}');
-      } else {
-        print('❌ Failed to update IP addresses: ${response.statusCode}');
-        try {
-          final errorData = json.decode(response.body);
-          print('💥 Error: ${errorData['message'] ?? 'Unknown error'}');
-        } catch (e) {
-          print('💥 Error response: ${response.body}');
-        }
-      }
-    } catch (e, stackTrace) {
-      print('💥 Error updating student IP address: $e');
-      print('📍 Stack trace: $stackTrace');
+      // Use the first available IP address (preferably local network IP)
+      String primaryIp = ipAddresses['localIp'] ?? ipAddresses['publicIp'] ?? 'unknown';
+      print('AuthService: Using primary IP: $primaryIp');
+      
+      // Send IP address in the login request body instead of separate API call
+      // This will be handled by the updated login endpoint
+      print('AuthService: IP address will be captured by login endpoint automatically');
+      
+    } catch (e) {
+      print('AuthService: Error preparing IP address: $e');
     }
   }
 

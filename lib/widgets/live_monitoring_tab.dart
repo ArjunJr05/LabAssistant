@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/screen_monitor_service.dart';
 import '../services/screen_monitor_state.dart';
-import '../services/api_services.dart';
-import '../services/auth_service.dart';
 import '../models/user_model.dart';
 import 'screen_monitor_widget.dart';
 
@@ -18,42 +16,12 @@ class LiveMonitoringTab extends StatefulWidget {
 class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
   late ScreenMonitorService _screenService;
   late ScreenMonitorState _monitorState;
-  late ApiService _apiService;
-  List<Map<String, dynamic>> _studentIpData = [];
-  bool _isLoadingIpData = true;
 
   @override
   void initState() {
     super.initState();
     _screenService = ScreenMonitorService();
     _monitorState = ScreenMonitorState();
-    _apiService = ApiService(AuthService());
-    _loadStudentIpData();
-  }
-
-  Future<void> _loadStudentIpData() async {
-    try {
-      print('🔍 Loading student IP data...');
-      final ipData = await _apiService.getStudentIpAddresses();
-      print('📊 Received IP data: ${ipData.length} students');
-      for (var data in ipData) {
-        print('   Student: ${data['enrollNumber']} - Local: ${data['localIp']}, Public: ${data['publicIp']}');
-      }
-      
-      if (mounted) {
-        setState(() {
-          _studentIpData = ipData;
-          _isLoadingIpData = false;
-        });
-      }
-    } catch (e) {
-      print('❌ Error loading student IP data: $e');
-      if (mounted) {
-        setState(() {
-          _isLoadingIpData = false;
-        });
-      }
-    }
   }
 
   @override
@@ -100,7 +68,7 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
 
   Widget _buildHeader() {
     final onlineStudents = widget.onlineUsers.where((user) => user.role == 'student').toList();
-    final connectedStudents = onlineStudents.where(_isStudentConnected).length;
+    final connectedClients = _screenService.connectedClients;
     
     return Container(
       padding: const EdgeInsets.all(20),
@@ -147,7 +115,7 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                   ),
                 ),
                 Text(
-                  '${onlineStudents.length} students online • $connectedStudents screens connected',
+                  '${onlineStudents.length} students online • ${connectedClients.length} screens connected',
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.white.withOpacity(0.9),
@@ -163,6 +131,7 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
 
   Widget _buildStudentList() {
     final onlineStudents = widget.onlineUsers.where((user) => user.role == 'student').toList();
+    final connectedClients = _screenService.connectedClients;
     
     return Container(
       decoration: BoxDecoration(
@@ -224,15 +193,19 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
           
           // Student list
           Expanded(
-            child: _isLoadingIpData
+            child: onlineStudents.isEmpty
                 ? const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircularProgressIndicator(),
+                        Icon(
+                          Icons.person_off_rounded,
+                          size: 48,
+                          color: Color(0xFF94A3B8),
+                        ),
                         SizedBox(height: 12),
                         Text(
-                          'Loading student data...',
+                          'No students online',
                           style: TextStyle(
                             color: Color(0xFF64748B),
                             fontSize: 16,
@@ -241,37 +214,18 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                       ],
                     ),
                   )
-                : onlineStudents.isEmpty
-                    ? const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.person_off_rounded,
-                              size: 48,
-                              color: Color(0xFF94A3B8),
-                            ),
-                            SizedBox(height: 12),
-                            Text(
-                              'No students online',
-                              style: TextStyle(
-                                color: Color(0xFF64748B),
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(8),
-                        itemCount: onlineStudents.length,
-                        itemBuilder: (context, index) {
-                          final student = onlineStudents[index];
-                          final isConnected = _isStudentConnected(student);
-                          
-                          return _buildStudentTile(student, isConnected);
-                        },
-                      ),
+                : ListView.builder(
+                    padding: const EdgeInsets.all(8),
+                    itemCount: onlineStudents.length,
+                    itemBuilder: (context, index) {
+                      final student = onlineStudents[index];
+                      final isConnected = connectedClients.any((client) => 
+                          client.userName.toLowerCase() == student.name.toLowerCase() ||
+                          client.computerName.toLowerCase().contains(student.enrollNumber.toLowerCase()));
+                      
+                      return _buildStudentTile(student, isConnected);
+                    },
+                  ),
           ),
         ],
       ),
@@ -280,47 +234,29 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
 
   Widget _buildStudentTile(User student, bool isConnected) {
     final connectedClients = _screenService.connectedClients;
-    
-    // Find student's IP data from database
-    final studentIpInfo = _studentIpData.firstWhere(
-      (ipData) => ipData['enrollNumber'] == student.enrollNumber,
-      orElse: () => <String, dynamic>{},
+    final matchingClient = connectedClients.firstWhere(
+      (client) => 
+          client.userName.toLowerCase() == student.name.toLowerCase() ||
+          client.computerName.toLowerCase().contains(student.enrollNumber.toLowerCase()),
+      orElse: () => connectedClients.isNotEmpty ? connectedClients.first : ClientInfo(
+        id: '',
+        computerName: '',
+        userName: '',
+        ipAddress: '',
+        resolution: '',
+        captureResolution: '',
+        fps: 0,
+        isConnected: false,
+        lastSeen: DateTime.now(),
+      ),
     );
-    
-    // Match client using IP address from database
-    ClientInfo? matchingClient;
-    if (isConnected) {
-      matchingClient = connectedClients.firstWhere(
-        (client) {
-          if (studentIpInfo.isNotEmpty) {
-            final localIp = studentIpInfo['localIp'];
-            final publicIp = studentIpInfo['publicIp'];
-            return client.ipAddress == localIp || client.ipAddress == publicIp;
-          }
-          // Fallback to name matching if no IP data
-          return client.userName.toLowerCase() == student.name.toLowerCase() ||
-                 client.computerName.toLowerCase().contains(student.enrollNumber.toLowerCase());
-        },
-        orElse: () => ClientInfo(
-          id: '',
-          computerName: '',
-          userName: '',
-          ipAddress: '',
-          resolution: '',
-          captureResolution: '',
-          fps: 0,
-          isConnected: false,
-          lastSeen: DateTime.now(),
-        ),
-      );
-    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: isConnected && matchingClient != null ? () => _openStudentFullscreen(matchingClient!.id) : null,
+          onTap: isConnected ? () => _openStudentFullscreen(matchingClient.id) : null,
           borderRadius: BorderRadius.circular(8),
           child: Container(
             padding: const EdgeInsets.all(12),
@@ -376,15 +312,6 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                           color: isConnected ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
                         ),
                       ),
-                      // Show IP status for debugging
-                      if (studentIpInfo.isNotEmpty)
-                        Text(
-                          'IP: ${studentIpInfo['localIp'] ?? 'N/A'}',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFF94A3B8),
-                          ),
-                        ),
                     ],
                   ),
                 ),
@@ -511,43 +438,6 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
         ],
       ),
     );
-  }
-
-  bool _isStudentConnected(User student) {
-    final connectedClients = _screenService.connectedClients;
-    
-    // Find student's IP data from database
-    final studentIpInfo = _studentIpData.firstWhere(
-      (ipData) => ipData['enrollNumber'] == student.enrollNumber,
-      orElse: () => <String, dynamic>{},
-    );
-    
-    print('🔍 Checking connection for student: ${student.name} (${student.enrollNumber})');
-    print('   IP Data: $studentIpInfo');
-    print('   Connected clients: ${connectedClients.map((c) => '${c.computerName}@${c.ipAddress}').toList()}');
-    
-    // Check if any connected client matches this student's IP
-    bool isConnected = connectedClients.any((client) {
-      if (studentIpInfo.isNotEmpty) {
-        final localIp = studentIpInfo['localIp'];
-        final publicIp = studentIpInfo['publicIp'];
-        bool ipMatch = client.ipAddress == localIp || client.ipAddress == publicIp;
-        if (ipMatch) {
-          print('   ✅ IP match found: ${client.ipAddress} matches ${localIp ?? publicIp}');
-        }
-        return ipMatch;
-      }
-      // Fallback to name matching if no IP data
-      bool nameMatch = client.userName.toLowerCase() == student.name.toLowerCase() ||
-                      client.computerName.toLowerCase().contains(student.enrollNumber.toLowerCase());
-      if (nameMatch) {
-        print('   ✅ Name match found: ${client.userName}/${client.computerName}');
-      }
-      return nameMatch;
-    });
-    
-    print('   Result: ${isConnected ? "CONNECTED" : "NOT CONNECTED"}');
-    return isConnected;
   }
 
   void _openStudentFullscreen(String clientId) {

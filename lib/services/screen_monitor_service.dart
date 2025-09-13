@@ -169,9 +169,12 @@ class ScreenMonitorService {
         onDone: () => _handleConnectionClosed(clientId),
       );
       
-      // Send initial ping
+      // Send initial ping and request handshake
       await Future.delayed(const Duration(milliseconds: 100));
       _sendMessage(clientId, {'type': 'ping'});
+      
+      // Also send a handshake request to ensure proper initialization
+      _sendMessage(clientId, {'type': 'handshake_request'});
       
       _connectionStatusController?.add('Connected to $ipAddress');
       return true;
@@ -208,24 +211,30 @@ class ScreenMonitorService {
 
   void _handleMessage(String clientId, dynamic message) {
     try {
+      print('ScreenMonitorService: Raw message received from $clientId: ${message.toString().substring(0, message.toString().length > 100 ? 100 : message.toString().length)}...');
+      
       final data = json.decode(message);
       final type = data['type'];
+      
+      print('ScreenMonitorService: Message type: $type from $clientId');
       
       switch (type) {
         case 'handshake':
           _handleHandshake(clientId, data);
           break;
         case 'frame':
+          print('ScreenMonitorService: Processing frame from $clientId');
           _handleFrame(clientId, data);
           break;
         case 'pong':
           _handlePong(clientId);
           break;
         default:
-          print('Unknown message type: $type');
+          print('Unknown message type: $type from $clientId');
       }
     } catch (e) {
       print('Error handling message from $clientId: $e');
+      print('Raw message: $message');
     }
   }
 
@@ -250,12 +259,25 @@ class ScreenMonitorService {
     
     print('Client connected: ${client.computerName} (${client.userName}) at $ipAddress');
     _connectionStatusController?.add('Client ${client.computerName} connected');
+    
+    // Request screen capture to start
+    _sendMessage(clientId, {
+      'type': 'start_capture',
+      'fps': 10,
+      'quality': 80,
+    });
+    print('ScreenMonitorService: Sent start_capture request to $clientId');
   }
 
   void _handleFrame(String clientId, Map<String, dynamic> data) {
     try {
+      print('ScreenMonitorService: Frame data keys: ${data.keys.toList()}');
+      
       final base64Data = data['data'] as String;
+      print('ScreenMonitorService: Frame data length: ${base64Data.length}');
+      
       final imageData = base64Decode(base64Data);
+      print('ScreenMonitorService: Decoded image data size: ${imageData.length} bytes');
       
       final frame = ScreenFrame(
         clientId: clientId,
@@ -269,6 +291,8 @@ class ScreenMonitorService {
       _latestFrames[clientId] = frame;
       _frameController?.add(frame);
       
+      print('ScreenMonitorService: Frame processed and added to stream for $clientId');
+      
       // Update last seen
       if (_clients.containsKey(clientId)) {
         _clients[clientId] = _clients[clientId]!.copyWith(lastSeen: DateTime.now());
@@ -276,6 +300,7 @@ class ScreenMonitorService {
       
     } catch (e) {
       print('Error processing frame from $clientId: $e');
+      print('Frame data structure: $data');
     }
   }
 

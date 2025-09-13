@@ -1,13 +1,14 @@
-import 'package:flutter/material.dart';
-import 'package:labassistant/services/api_services.dart';
 import 'package:labassistant/services/socket_services.dart';
+import 'package:labassistant/services/api_services.dart';
+import 'package:labassistant/services/auth_service.dart';
+import 'package:labassistant/screens/exercise_management_screen.dart';
+import 'package:labassistant/screens/admin_monitor_screen.dart';
+import 'package:labassistant/widgets/screen_monitor_widget.dart';
 import 'package:provider/provider.dart';
-import 'dart:async';
-import 'dart:math' as math;
-import '../services/auth_service.dart';
 import '../models/user_model.dart';
-import 'admin_monitor_screen.dart';
-import 'exercise_management_screen.dart';
+import 'dart:math' as math;
+import 'dart:async';
+import 'package:flutter/material.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -481,6 +482,7 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
                 _buildDashboardTab(),
                 _buildMonitoringTab(),
                 _buildExerciseManagementTab(),
+                _buildLiveMonitoringTab(),
               ],
             ),
       bottomNavigationBar: Container(
@@ -511,11 +513,15 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.monitor_rounded),
-              label: 'Monitor Students',
+              label: 'Monitor',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.assignment_rounded),
-              label: 'Manage Exercises',
+              label: 'Manage',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.live_tv_rounded),
+              label: 'Live',
             ),
           ],
         ),
@@ -824,8 +830,11 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
   }
 
   Widget _buildActivityChart() {
-    final dailyActivity = analytics['dailyActivity'] as List<Map<String, dynamic>>;
-    final maxSubmissions = dailyActivity.map((d) => d['submissions'] as int).reduce(math.max);
+    final dailyActivityRaw = analytics['dailyActivity'] ?? [];
+    final dailyActivity = (dailyActivityRaw as List).cast<Map<String, dynamic>>();
+    final maxSubmissions = dailyActivity.isNotEmpty 
+        ? dailyActivity.map((d) => d['submissions'] as int).reduce(math.max)
+        : 1;
     
     return Container(
       padding: const EdgeInsets.all(24),
@@ -948,7 +957,8 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
   }
 
   Widget _buildSubjectStatsCard() {
-    final subjectStats = analytics['subjectStats'] as List<Map<String, dynamic>>;
+    final subjectStatsRaw = analytics['subjectStats'] ?? [];
+    final subjectStats = (subjectStatsRaw as List).cast<Map<String, dynamic>>();
     
     return Container(
       padding: const EdgeInsets.all(24),
@@ -1096,7 +1106,8 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
   }
 
   Widget _buildDifficultyDistribution() {
-    final distribution = analytics['difficultyDistribution'] as Map<String, int>;
+    final distributionRaw = analytics['difficultyDistribution'] ?? {};
+    final distribution = Map<String, int>.from(distributionRaw);
     final total = distribution.values.reduce((a, b) => a + b);
     
     return Container(
@@ -1253,8 +1264,11 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
   }
 
   Widget _buildCompletionRatesCard() {
-    final completionRates = analytics['completionRates'] as List<Map<String, dynamic>>;
-    final maxCount = completionRates.map((r) => r['count'] as int).reduce(math.max);
+    final completionRatesRaw = analytics['completionRates'] ?? [];
+    final completionRates = (completionRatesRaw as List).cast<Map<String, dynamic>>();
+    final maxCount = completionRates.isNotEmpty 
+        ? completionRates.map((r) => r['count'] as int).reduce(math.max)
+        : 1;
     
     return Container(
       padding: const EdgeInsets.all(24),
@@ -1366,7 +1380,7 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
   }
 
   Widget _buildRecentActivityCard() {
-    final recentSubmissions = analytics['recentSubmissions'] as List;
+    final recentSubmissions = analytics['recentSubmissions'] as List? ?? [];
     
     return Container(
       padding: const EdgeInsets.all(24),
@@ -1495,6 +1509,10 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
 
   Widget _buildExerciseManagementTab() {
     return const ExerciseManagementScreen();
+  }
+
+  Widget _buildLiveMonitoringTab() {
+    return const ScreenMonitorWidget();
   }
 }
 

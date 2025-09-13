@@ -1,6 +1,7 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../services/screen_monitor_service.dart';
+import '../services/screen_monitor_state.dart';
+import 'student_bottom_nav.dart';
 
 class ScreenMonitorWidget extends StatefulWidget {
   const ScreenMonitorWidget({super.key});
@@ -11,24 +12,22 @@ class ScreenMonitorWidget extends StatefulWidget {
 
 class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
   late ScreenMonitorService _screenService;
-  final Map<String, Uint8List> _frameCache = {};
-  String? _fullscreenClientId;
+  late ScreenMonitorState _monitorState;
   final TextEditingController _ipController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    // Use the singleton instance instead of creating a new one
+    // Use the singleton instances
     _screenService = ScreenMonitorService();
+    _monitorState = ScreenMonitorState();
     
     // Listen to frame updates with debug logging
     _screenService.frameStream.listen((frame) {
       print('ScreenMonitorWidget: Received frame from ${frame.clientId}, size: ${frame.imageData.length} bytes');
       if (mounted) {
-        setState(() {
-          _frameCache[frame.clientId] = frame.imageData;
-        });
-        print('ScreenMonitorWidget: Frame cached for ${frame.clientId}, total cached: ${_frameCache.length}');
+        _monitorState.updateFrame(frame.clientId, frame.imageData);
+        print('ScreenMonitorWidget: Frame cached for ${frame.clientId}, total cached: ${_monitorState.frameCache.length}');
       }
     });
     
@@ -46,16 +45,25 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (_fullscreenClientId != null) {
-      return _buildFullscreenView();
-    }
+    return AnimatedBuilder(
+      animation: _monitorState,
+      builder: (context, child) {
+        if (_monitorState.fullscreenClientId != null) {
+          return _buildFullscreenView();
+        }
 
-    return Column(
-      children: [
-        _buildControlPanel(),
-        const SizedBox(height: 16),
-        Expanded(child: _buildScreenGrid()),
-      ],
+        return Column(
+          children: [
+            _buildControlPanel(),
+            const SizedBox(height: 16),
+            Expanded(child: _buildScreenGrid()),
+            StudentBottomNav(
+              onStudentTap: _openFullscreen,
+              selectedClientId: _monitorState.fullscreenClientId,
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -202,7 +210,7 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
   }
 
   Widget _buildScreenTile(ClientInfo client) {
-    final hasFrame = _frameCache.containsKey(client.id);
+    final hasFrame = _monitorState.frameCache.containsKey(client.id);
     
     return GestureDetector(
       onTap: () => _openFullscreen(client.id),
@@ -228,35 +236,69 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
                   color: Color(0xFF1E293B),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
                 ),
-                child: hasFrame
-                    ? ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                        child: Image.memory(
-                          _frameCache[client.id]!,
-                          fit: BoxFit.cover,
-                          gaplessPlayback: true,
-                        ),
-                      )
-                    : const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.monitor_outlined,
-                              color: Color(0xFF64748B),
-                              size: 48,
+                child: Stack(
+                  children: [
+                    // Screen content
+                    hasFrame
+                        ? ClipRRect(
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                            child: Image.memory(
+                              _monitorState.frameCache[client.id]!,
+                              fit: BoxFit.cover,
+                              gaplessPlayback: true,
+                              width: double.infinity,
+                              height: double.infinity,
                             ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Connecting...',
-                              style: TextStyle(
-                                color: Color(0xFF64748B),
-                                fontSize: 14,
+                          )
+                        : const Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.monitor_outlined,
+                                  color: Color(0xFF64748B),
+                                  size: 48,
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Connecting...',
+                                  style: TextStyle(
+                                    color: Color(0xFF64748B),
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                    
+                    // Fullscreen button overlay
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.7),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(6),
+                            onTap: () => _openFullscreen(client.id),
+                            child: const Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: Icon(
+                                Icons.fullscreen,
+                                color: Colors.white,
+                                size: 20,
                               ),
                             ),
-                          ],
+                          ),
                         ),
                       ),
+                    ),
+                  ],
+                ),
               ),
             ),
             
@@ -367,42 +409,86 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
   }
 
   Widget _buildFullscreenView() {
-    final client = _screenService.connectedClients
-        .firstWhere((c) => c.id == _fullscreenClientId);
-    final hasFrame = _frameCache.containsKey(_fullscreenClientId);
+    final client = _screenService.connectedClients.firstWhere((c) => c.id == _monitorState.fullscreenClientId);
+    final hasFrame = _monitorState.frameCache.containsKey(_monitorState.fullscreenClientId);
 
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.8),
-        foregroundColor: Colors.white,
-        title: Text('${client.computerName} - ${client.userName}'),
-        actions: [
-          IconButton(
-            onPressed: () => setState(() => _fullscreenClientId = null),
-            icon: const Icon(Icons.fullscreen_exit),
-          ),
-        ],
+      extendBodyBehindAppBar: true,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(0),
+        child: Container(),
       ),
-      body: Center(
-        child: hasFrame
-            ? InteractiveViewer(
-                child: Image.memory(
-                  _frameCache[_fullscreenClientId]!,
-                  fit: BoxFit.contain,
-                ),
-              )
-            : const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+      body: Stack(
+        children: [
+          // Full screen content
+          SizedBox.expand(
+            child: hasFrame
+                ? InteractiveViewer(
+                    panEnabled: true,
+                    scaleEnabled: true,
+                    minScale: 0.5,
+                    maxScale: 3.0,
+                    child: Image.memory(
+                      _monitorState.frameCache[_monitorState.fullscreenClientId]!,
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      height: double.infinity,
+                      gaplessPlayback: true,
+                      filterQuality: FilterQuality.medium,
+                      cacheWidth: null,
+                      cacheHeight: null,
+                    ),
+                  )
+                : const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: Colors.white),
+                        SizedBox(height: 16),
+                        Text(
+                          'Loading screen...',
+                          style: TextStyle(color: Colors.white, fontSize: 18),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+          
+          // Floating controls overlay
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.7),
+                borderRadius: BorderRadius.circular(25),
+              ),
+              child: Row(
                 children: [
-                  CircularProgressIndicator(color: Colors.white),
-                  SizedBox(height: 16),
-                  Text(
-                    'Loading screen...',
-                    style: TextStyle(color: Colors.white, fontSize: 18),
+                  Expanded(
+                    child: Text(
+                      '${client.computerName} - ${client.userName}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => _monitorState.setFullscreenClient(null),
+                    icon: const Icon(Icons.fullscreen_exit, color: Colors.white),
+                    splashRadius: 20,
                   ),
                 ],
               ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -525,8 +611,6 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
   }
 
   void _openFullscreen(String clientId) {
-    setState(() {
-      _fullscreenClientId = clientId;
-    });
+    _monitorState.setFullscreenClient(clientId);
   }
 }

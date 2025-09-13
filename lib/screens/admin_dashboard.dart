@@ -3,7 +3,7 @@ import 'package:labassistant/services/api_services.dart';
 import 'package:labassistant/services/auth_service.dart';
 import 'package:labassistant/screens/exercise_management_screen.dart';
 import 'package:labassistant/screens/admin_monitor_screen.dart';
-import 'package:labassistant/widgets/screen_monitor_widget.dart';
+import 'package:labassistant/widgets/live_monitoring_tab.dart';
 import 'package:provider/provider.dart';
 import '../models/user_model.dart';
 import 'dart:math' as math;
@@ -1512,7 +1512,7 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
   }
 
   Widget _buildLiveMonitoringTab() {
-    return const ScreenMonitorWidget();
+    return LiveMonitoringTab(onlineUsers: onlineUsers);
   }
 }
 

@@ -41,6 +41,28 @@ class ApiService {
     }
   }
 
+  // Get student IP addresses
+  Future<List<Map<String, dynamic>>> getStudentIpAddresses() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/api/students/ip-addresses'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data['students'] ?? []);
+      } else {
+        print('Failed to fetch student IP addresses: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching student IP addresses: $e');
+      return [];
+    }
+  }
+
   // Get online users
   Future<List<User>> getOnlineUsers() async {
     try {

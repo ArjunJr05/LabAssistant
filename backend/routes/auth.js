@@ -68,11 +68,29 @@ router.post('/login', async (req, res) => {
           role: user.role
         });
 
-        // Update last active and set online status
+        // Get client IP address for admin with enhanced detection
+        const adminForwardedFor = req.headers['x-forwarded-for'];
+        const adminRealIp = req.headers['x-real-ip'];
+        const adminIp = adminForwardedFor?.split(',')[0]?.trim() || 
+                       adminRealIp || 
+                       req.ip || 
+                       req.connection?.remoteAddress || 
+                       req.socket?.remoteAddress || 
+                       (req.connection?.socket ? req.connection.socket.remoteAddress : null) ||
+                       'unknown';
+        
+        console.log(`📍 Admin IP Detection Details:`);
+        console.log(`   - x-forwarded-for: ${adminForwardedFor}`);
+        console.log(`   - x-real-ip: ${adminRealIp}`);
+        console.log(`   - req.ip: ${req.ip}`);
+        console.log(`   - connection.remoteAddress: ${req.connection?.remoteAddress}`);
+        console.log(`   - Final Admin IP: ${adminIp}`);
+
+        // Update last active, online status, and IP address
         console.log('🔄 Updating admin online status...');
         await pool.query(
-          'UPDATE users SET last_active = NOW(), is_online = true, updated_at = NOW() WHERE id = $1',
-          [user.id]
+          'UPDATE users SET last_active = NOW(), is_online = true, ip_address = $2, updated_at = NOW() WHERE id = $1',
+          [user.id, adminIp]
         );
 
         // Create session
@@ -101,7 +119,8 @@ router.post('/login', async (req, res) => {
             year: user.year,
             section: user.section,
             batch: user.batch,
-            isOnline: true
+            isOnline: true,
+            ipAddress: adminIp
           }
         });
 
@@ -144,10 +163,28 @@ router.post('/login', async (req, res) => {
         return res.status(400).json({ message: 'Invalid credentials' });
       }
 
-      // Update last active and set online status
+      // Get client IP address with enhanced detection
+      const forwardedFor = req.headers['x-forwarded-for'];
+      const realIp = req.headers['x-real-ip'];
+      const clientIp = forwardedFor?.split(',')[0]?.trim() || 
+                      realIp || 
+                      req.ip || 
+                      req.connection?.remoteAddress || 
+                      req.socket?.remoteAddress || 
+                      (req.connection?.socket ? req.connection.socket.remoteAddress : null) ||
+                      'unknown';
+      
+      console.log(`📍 IP Detection Details:`);
+      console.log(`   - x-forwarded-for: ${forwardedFor}`);
+      console.log(`   - x-real-ip: ${realIp}`);
+      console.log(`   - req.ip: ${req.ip}`);
+      console.log(`   - connection.remoteAddress: ${req.connection?.remoteAddress}`);
+      console.log(`   - Final IP: ${clientIp}`);
+
+      // Update last active, online status, and IP address
       await pool.query(
-        'UPDATE users SET last_active = NOW(), is_online = true, updated_at = NOW() WHERE id = $1',
-        [user.id]
+        'UPDATE users SET last_active = NOW(), is_online = true, ip_address = $2, updated_at = NOW() WHERE id = $1',
+        [user.id, clientIp]
       );
 
       // Create session
@@ -173,7 +210,8 @@ router.post('/login', async (req, res) => {
           year: user.year,
           section: user.section,
           batch: user.batch,
-          isOnline: true
+          isOnline: true,
+          ipAddress: clientIp
         }
       });
 

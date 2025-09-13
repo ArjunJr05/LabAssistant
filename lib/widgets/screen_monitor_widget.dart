@@ -24,11 +24,16 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
     
     // Listen to frame updates with debug logging
     _screenService.frameStream.listen((frame) {
-      print('ScreenMonitorWidget: Received frame from ${frame.clientId}, size: ${frame.imageData.length} bytes');
+      print('ScreenMonitorWidget: Received frame from ${frame.clientId}, size: ${frame.imageData.length} bytes, dimensions: ${frame.width}x${frame.height}');
       if (mounted) {
         _monitorState.updateFrame(frame.clientId, frame.imageData);
         print('ScreenMonitorWidget: Frame cached for ${frame.clientId}, total cached: ${_monitorState.frameCache.length}');
+        print('ScreenMonitorWidget: Triggering UI rebuild...');
+      } else {
+        print('ScreenMonitorWidget: Widget not mounted, skipping frame update');
       }
+    }, onError: (error) {
+      print('ScreenMonitorWidget: Frame stream error: $error');
     });
     
     // Listen to connection status

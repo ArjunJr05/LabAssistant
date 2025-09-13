@@ -13,7 +13,6 @@ class ScreenMonitorWidget extends StatefulWidget {
 class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
   late ScreenMonitorService _screenService;
   late ScreenMonitorState _monitorState;
-  final TextEditingController _ipController = TextEditingController();
 
   @override
   void initState() {
@@ -44,7 +43,6 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
 
   @override
   void dispose() {
-    _ipController.dispose();
     super.dispose();
   }
 
@@ -86,100 +84,45 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              const Icon(Icons.monitor, color: Color(0xFF3B82F6)),
-              const SizedBox(width: 8),
-              const Text(
-                'Screen Monitoring Control',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
-                ),
-              ),
-              const Spacer(),
-              StreamBuilder<String>(
-                stream: _screenService.connectionStatusStream,
-                builder: (context, snapshot) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.circle, color: Color(0xFF10B981), size: 8),
-                        const SizedBox(width: 6),
-                        Text(
-                          snapshot.data ?? 'Ready',
-                          style: const TextStyle(
-                            color: Color(0xFF10B981),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ],
+          const Icon(Icons.monitor, color: Color(0xFF3B82F6)),
+          const SizedBox(width: 8),
+          const Text(
+            'Live Screen Monitoring',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E293B),
+            ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _ipController,
-                  decoration: InputDecoration(
-                    hintText: 'Enter client IP address (e.g., 192.168.1.100)',
-                    prefixIcon: const Icon(Icons.computer, color: Color(0xFF64748B)),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          const Spacer(),
+          StreamBuilder<String>(
+            stream: _screenService.connectionStatusStream,
+            builder: (context, snapshot) {
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.circle, color: Color(0xFF10B981), size: 8),
+                    const SizedBox(width: 6),
+                    Text(
+                      snapshot.data ?? 'Ready',
+                      style: const TextStyle(
+                        color: Color(0xFF10B981),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Color(0xFF3B82F6)),
-                    ),
-                  ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              ElevatedButton.icon(
-                onPressed: _connectToManualIP,
-                icon: const Icon(Icons.add_link, size: 18),
-                label: const Text('Connect'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3B82F6),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: _refreshDiscovery,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Discover'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ],
+              );
+            },
           ),
         ],
       ),
@@ -572,48 +515,6 @@ class _ScreenMonitorWidgetState extends State<ScreenMonitorWidget> {
     return 4;
   }
 
-  void _connectToManualIP() async {
-    final ip = _ipController.text.trim();
-    if (ip.isEmpty) return;
-
-    final success = await _screenService.connectToClient(ip);
-    if (success && mounted) {
-      _ipController.clear();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Connected to $ip'),
-          backgroundColor: const Color(0xFF10B981),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to connect to $ip'),
-          backgroundColor: const Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
-    }
-  }
-
-  void _refreshDiscovery() {
-    _screenService.stopService();
-    _screenService.startService();
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Discovering clients on network...'),
-          backgroundColor: Color(0xFF3B82F6),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-  }
 
   void _openFullscreen(String clientId) {
     _monitorState.setFullscreenClient(clientId);

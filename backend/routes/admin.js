@@ -848,4 +848,44 @@ router.get('/student-exercises/:studentId', auth, adminOnly, async (req, res) =>
   }
 });
 
+// Get admin IP address from database
+router.get('/ip', async (req, res) => {
+  try {
+    console.log('Fetching admin IP from database...');
+    
+    // Get the IP address of the admin user from the users table
+    const result = await pool.query(`
+      SELECT ip_address 
+      FROM users 
+      WHERE role = 'admin' 
+      AND ip_address IS NOT NULL 
+      ORDER BY updated_at DESC 
+      LIMIT 1
+    `);
+    
+    if (result.rows.length > 0 && result.rows[0].ip_address) {
+      const adminIp = result.rows[0].ip_address;
+      console.log('Admin IP found in database:', adminIp);
+      
+      res.json({ 
+        success: true,
+        ip: adminIp 
+      });
+    } else {
+      console.log('No admin IP found in database');
+      res.status(404).json({ 
+        success: false,
+        message: 'Admin IP not found in database' 
+      });
+    }
+  } catch (error) {
+    console.error('Error fetching admin IP:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error while fetching admin IP',
+      error: error.message 
+    });
+  }
+});
+
 module.exports = router;

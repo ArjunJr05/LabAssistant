@@ -30,9 +30,20 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
       print('LiveMonitoringTab: Frame stream error: $error');
     });
     
-    // Listen to client connections
+    // Listen to client connections and disconnections
     _screenService.clientsStream.listen((clients) {
       print('LiveMonitoringTab: Connected clients: ${clients.map((c) => '${c.id}@${c.ipAddress}').join(', ')}');
+      
+      // Clean up frames for disconnected clients
+      final connectedClientIds = clients.map((c) => c.id).toSet();
+      final cachedClientIds = _monitorState.frameCache.keys.toSet();
+      
+      // Remove frames for clients that are no longer connected
+      for (String cachedId in cachedClientIds) {
+        if (!connectedClientIds.contains(cachedId)) {
+          _monitorState.removeClient(cachedId);
+        }
+      }
     });
   }
 
@@ -245,7 +256,6 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
   }
 
   Widget _buildStudentTile(User student, bool isConnected) {
-
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       child: Material(
@@ -422,10 +432,12 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  // Exit fullscreen button
                   IconButton(
-                    onPressed: () => _monitorState.setFullscreenClient(null),
-                    icon: const Icon(Icons.minimize, color: Colors.white),
+                    onPressed: () => _monitorState.exitFullscreen(),
+                    icon: const Icon(Icons.fullscreen_exit, color: Colors.white),
                     splashRadius: 20,
+                    tooltip: 'Return to grid view',
                   ),
                 ],
               ),
@@ -625,7 +637,21 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                             errorBuilder: (context, error, stackTrace) {
                               print('Image error for ${client.id}: $error');
                               return const Center(
-                                child: Text('Image Error', style: TextStyle(color: Colors.red)),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.error_outline,
+                                      color: Colors.red,
+                                      size: 32,
+                                    ),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      'Image Error',
+                                      style: TextStyle(color: Colors.red, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
                               );
                             },
                           ),
@@ -634,19 +660,26 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(
-                                Icons.monitor_outlined,
+                              const CircularProgressIndicator(
                                 color: Color(0xFF64748B),
-                                size: 48,
+                                strokeWidth: 2,
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'Connecting...',
+                                style: TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 14,
+                                ),
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Client: ${client.id}\nIP: ${client.ipAddress}\nFrames: ${_monitorState.frameCache.containsKey(client.id) ? 'Available' : 'None'}',
+                                'IP: ${client.ipAddress}',
                                 style: const TextStyle(
                                   color: Color(0xFF64748B),
-                                  fontSize: 12,
+                                  fontSize: 10,
+                                  fontFamily: 'monospace',
                                 ),
-                                textAlign: TextAlign.center,
                               ),
                             ],
                           ),
@@ -665,7 +698,7 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(6),
-                          onTap: () => _monitorState.setFullscreenClient(client.id),
+                          onTap: () => _monitorState.enterFullscreen(client.id),
                           child: const Padding(
                             padding: EdgeInsets.all(8.0),
                             child: Icon(
@@ -720,15 +753,19 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withOpacity(0.1),
+                    color: hasFrame 
+                        ? const Color(0xFF10B981).withOpacity(0.1)
+                        : const Color(0xFFF59E0B).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text(
-                    'LIVE',
+                  child: Text(
+                    hasFrame ? 'LIVE' : 'CONNECTING',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF10B981),
+                      color: hasFrame 
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFF59E0B),
                     ),
                   ),
                 ),
@@ -741,6 +778,9 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
   }
 
   Widget _buildEmptyState() {
+    final connectedClients = _screenService.connectedClients;
+    final frameCount = _monitorState.frameCache.length;
+    
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -767,13 +807,75 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            'Click on a student to connect and monitor their screen\n\nDebug Info:\n- Connected clients: ${_screenService.connectedClients.length}\n- Frame cache: ${_monitorState.frameCache.length} items',
-            style: const TextStyle(
-              fontSize: 12,
+          const Text(
+            'Click on a student to connect and monitor their screen',
+            style: TextStyle(
+              fontSize: 14,
               color: Color(0xFF64748B),
             ),
             textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          // Enhanced debug info
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Debug Information:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF374151),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '• Connected clients: ${connectedClients.length}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF6B7280),
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                Text(
+                  '• Frame cache: $frameCount items',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF6B7280),
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                if (connectedClients.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  const Text(
+                    '• Client IDs:',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF6B7280),
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  ...connectedClients.map((client) => Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Text(
+                      '  - ${client.id} (${client.ipAddress})',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF9CA3AF),
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  )),
+                ],
+              ],
+            ),
           ),
         ],
       ),

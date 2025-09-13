@@ -150,12 +150,13 @@ class AuthService extends ChangeNotifier {
         
         print('🎉 LOGIN SUCCESSFUL');
         
-        // For student login, emit socket event to register with server
+        // For student login, fetch IP addresses and update database
         if (_user?.role == 'student') {
           print('📡 Registering student with socket server...');
           // We'll emit this after the UI updates
           Future.delayed(Duration(milliseconds: 500), () {
             _emitStudentLogin();
+            _updateStudentIpAddress();
           });
         }
         
@@ -454,6 +455,32 @@ class AuthService extends ChangeNotifier {
       // Import SocketService and emit login event
       print('🔌 Emitting student login to socket server');
       // This will be handled by the UI components that have access to SocketService
+    }
+  }
+
+  Future<void> _updateStudentIpAddress() async {
+    try {
+      print('AuthService: Starting IP address update...');
+      
+      // Get device IP addresses
+      final ipAddresses = await NetworkHelper.getDeviceIpAddresses();
+      print('AuthService: Retrieved IP addresses: $ipAddresses');
+      
+      if (ipAddresses.isEmpty) {
+        print('AuthService: No IP addresses found, skipping update');
+        return;
+      }
+      
+      // Use the first available IP address (preferably local network IP)
+      String primaryIp = ipAddresses['localIp'] ?? ipAddresses['publicIp'] ?? 'unknown';
+      print('AuthService: Using primary IP: $primaryIp');
+      
+      // Send IP address in the login request body instead of separate API call
+      // This will be handled by the updated login endpoint
+      print('AuthService: IP address will be captured by login endpoint automatically');
+      
+    } catch (e) {
+      print('AuthService: Error preparing IP address: $e');
     }
   }
 

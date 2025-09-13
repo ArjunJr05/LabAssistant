@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:labassistant/services/socket_services.dart';
 import 'package:labassistant/services/api_services.dart';
 import 'package:labassistant/services/auth_service.dart';
+import 'package:labassistant/services/screen_monitor_service.dart';
+import 'package:labassistant/widgets/screen_monitor_widget.dart';
 import 'package:provider/provider.dart';
 import '../models/user_model.dart';
 
@@ -29,6 +31,9 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
   // Animation controllers
   late AnimationController _slideController;
   late AnimationController _fadeController;
+  
+  // Screen monitoring
+  late ScreenMonitorService _screenMonitorService;
 
   @override
   void initState() {
@@ -46,6 +51,9 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
     
     _setupSocketListeners();
     
+    // Initialize screen monitoring service
+    _screenMonitorService = ScreenMonitorService();
+    
     // Start animations
     _slideController.forward();
     _fadeController.forward();
@@ -55,6 +63,7 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
   void dispose() {
     _slideController.dispose();
     _fadeController.dispose();
+    _screenMonitorService.dispose();
     super.dispose();
   }
 
@@ -711,10 +720,10 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
           ),
         ),
         
-        // Exercise list and activity feed
+        // Exercise list, activity feed, and screen monitoring
         Expanded(
           child: DefaultTabController(
-            length: 2,
+            length: 3,
             child: Column(
               children: [
                 Container(
@@ -781,6 +790,38 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
                           ],
                         ),
                       ),
+                      Tab(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.monitor_rounded, size: 20),
+                            const SizedBox(width: 8),
+                            const Text('Screen Monitor'),
+                            const SizedBox(width: 8),
+                            StreamBuilder<List<ClientInfo>>(
+                              stream: _screenMonitorService.clientsStream,
+                              builder: (context, snapshot) {
+                                final clientCount = snapshot.data?.length ?? 0;
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEF4444).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    clientCount.toString(),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFFEF4444),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -789,6 +830,7 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
                     children: [
                       _buildExercisesList(),
                       _buildLiveActivityFeed(),
+                      const ScreenMonitorWidget(),
                     ],
                   ),
                 ),

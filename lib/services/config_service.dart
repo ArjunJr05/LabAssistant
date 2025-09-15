@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:io';
 
 class ConfigService {
   static const String _serverIpKey = 'server_ip';
@@ -10,37 +11,51 @@ class ConfigService {
   static String? _cachedServerIp;
   static int? _cachedServerPort;
   
-  /// Fetch admin IP from database using known admin IP
-  static Future<String?> _fetchAdminIpFromDatabase() async {
-    // List of potential admin IPs to try
-    final potentialAdminIPs = [
-      '10.106.124.236', // Current admin IP from your table
-      '172.17.13.191',  // Previous IP
-      'localhost',      // Development fallback
-    ];
-    
-    for (String adminIP in potentialAdminIPs) {
-      try {
-        print('Trying to fetch admin IP using: $adminIP');
-        final response = await http.get(
-          Uri.parse('http://$adminIP:$_defaultServerPort/api/admin/ip'),
-          headers: {'Content-Type': 'application/json'},
-        ).timeout(const Duration(seconds: 3));
-        
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          final fetchedIP = data['ip'] as String?;
-          print('Successfully fetched admin IP from database: $fetchedIP');
-          return fetchedIP;
+  /// Get current system's IP address
+  static Future<String?> getCurrentSystemIP() async {
+    try {
+      // Get all network interfaces
+      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
+      
+      // Prefer non-loopback interfaces
+      for (final interface in interfaces) {
+        for (final address in interface.addresses) {
+          if (!address.isLoopback && address.type == InternetAddressType.IPv4) {
+            print('Found system IP: ${address.address}');
+            return address.address;
+          }
         }
-      } catch (e) {
-        print('Failed to fetch admin IP using $adminIP: $e');
-        continue; // Try next IP
       }
+      
+      // Fallback to localhost if no other IP found
+      return 'localhost';
+    } catch (e) {
+      print('Error getting system IP: $e');
+      return 'localhost';
     }
-    
-    print('Failed to fetch admin IP from database using all potential IPs');
-    return null;
+  }
+  
+  /// Store admin IP in database during login
+  static Future<bool> storeAdminIP(String adminIP) async {
+    try {
+      print('Storing admin IP in database: $adminIP');
+      final response = await http.post(
+        Uri.parse('http://$adminIP:$_defaultServerPort/api/admin/store-ip'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'ip': adminIP}),
+      ).timeout(const Duration(seconds: 5));
+      
+      if (response.statusCode == 200) {
+        print('Successfully stored admin IP in database');
+        return true;
+      } else {
+        print('Failed to store admin IP: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('Error storing admin IP: $e');
+      return false;
+    }
   }
   
   /// Get the current server IP address
@@ -112,31 +127,13 @@ class ConfigService {
     _cachedServerPort = null;
   }
   
-  /// Auto-detect local network IP addresses (for convenience)
-  static List<String> getCommonLocalIPs() {
-    return [
-      '192.168.0.79',
-      '192.168.1.100',
-      '192.168.1.101',
-      '192.168.1.102',
-      '192.168.0.100',
-      '192.168.0.101',
-      '192.168.0.102',
-      '10.0.0.100',
-      '10.0.0.101',
-      '172.16.0.100',
-      'localhost', // Keep as fallback for development
-    ];
-  }
   
-  /// Force reset and fetch fresh IP from database (useful for troubleshooting)
+  /// Force reset configuration (useful for troubleshooting)
   static Future<void> resetToDefault() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_serverIpKey); // Remove cached IP
     await prefs.setInt(_serverPortKey, _defaultServerPort);
     clearCache();
-    
-    // Force fetch fresh IP from database
-    await getServerIp();
+    print('Network configuration reset to default');
   }
 }

@@ -848,6 +848,53 @@ router.get('/student-exercises/:studentId', auth, adminOnly, async (req, res) =>
   }
 });
 
+// Store admin IP address in database
+router.post('/store-ip', async (req, res) => {
+  try {
+    const { ip } = req.body;
+    
+    if (!ip) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'IP address is required' 
+      });
+    }
+    
+    console.log('Storing admin IP in database:', ip);
+    
+    // Update the IP address for admin users
+    const result = await pool.query(`
+      UPDATE users 
+      SET ip_address = $1, updated_at = NOW() 
+      WHERE role = 'admin'
+      RETURNING id, enroll_number, ip_address
+    `, [ip]);
+    
+    if (result.rows.length > 0) {
+      console.log('Admin IP stored successfully:', ip);
+      res.json({ 
+        success: true,
+        message: 'Admin IP stored successfully',
+        ip: ip,
+        updatedAdmins: result.rows.length
+      });
+    } else {
+      console.log('No admin users found to update');
+      res.status(404).json({ 
+        success: false,
+        message: 'No admin users found' 
+      });
+    }
+  } catch (error) {
+    console.error('Error storing admin IP:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error while storing admin IP',
+      error: error.message 
+    });
+  }
+});
+
 // Get admin IP address from database
 router.get('/ip', async (req, res) => {
   try {

@@ -11,9 +11,9 @@ import 'screens/admin_dashboard.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Force reset network configuration on app start
+  // Reset network configuration on app start - no longer tries to fetch hardcoded IPs
   await ConfigService.resetToDefault();
-  print(' Network configuration reset to default IP');
+  print('Network configuration reset - ready for dynamic IP detection');
   
   // Set window properties for desktop
   await DesktopWindow.setMinWindowSize(const Size(1200, 800));

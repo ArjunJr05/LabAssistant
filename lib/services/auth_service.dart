@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../models/user_model.dart';
 import 'server_manager.dart';
@@ -21,11 +22,32 @@ class AuthService extends ChangeNotifier {
   ServerManager get serverManager => _serverManager;
 
   AuthService() {
-    // No longer load user from storage - always start fresh
-    _isLoading = false;
+    _loadUserFromStorage();
   }
 
-  // Removed _loadUserFromStorage - no longer persist authentication state
+  Future<void> _loadUserFromStorage() async {
+    print('🔄 Loading user from storage...');
+    _isLoading = true;
+    notifyListeners();
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    final userJson = prefs.getString('user');
+
+    print('📱 Stored token exists: ${token != null}');
+    print('📱 Stored user exists: ${userJson != null}');
+
+    if (token != null && userJson != null) {
+      _token = token;
+      _user = User.fromJson(json.decode(userJson));
+      print('✅ Loaded user from storage: ${_user?.name} (${_user?.role})');
+    } else {
+      print('❌ No stored user data found');
+    }
+
+    _isLoading = false;
+    notifyListeners();
+  }
 
   Future<bool> login(String enrollNumber, String password) async {
     try {
@@ -112,7 +134,7 @@ class AuthService extends ChangeNotifier {
         print('🏷️ User role: ${_user?.role}');
         print('🆔 User enroll number: ${_user?.enrollNumber}');
         
-        // No longer save to storage - session only
+        await _saveUserToStorage();
         
         // Extra validation for admin
         if (isAdminLogin) {
@@ -230,7 +252,7 @@ class AuthService extends ChangeNotifier {
         print('🏷️ User role: ${_user?.role}');
         print('🆔 User enroll number: ${_user?.enrollNumber}');
         
-        // No longer save to storage - session only
+        await _saveUserToStorage();
         print('🎉 REGISTRATION SUCCESSFUL');
         return true;
       } else {
@@ -308,7 +330,7 @@ class AuthService extends ChangeNotifier {
         print('🏷️ Admin role: ${_user?.role}');
         print('🆔 Admin username: ${_user?.enrollNumber}');
         
-        // No longer save to storage - session only
+        await _saveUserToStorage();
         print('🎉 ADMIN REGISTRATION SUCCESSFUL');
         return true;
       } else {
@@ -390,10 +412,13 @@ class AuthService extends ChangeNotifier {
         }
       }
       
-      // Clear local data (memory only - no storage to clear)
-      print('🧹 Clearing session data...');
+      // Clear local data
+      print('🧹 Clearing local storage...');
       _user = null;
       _token = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('token');
+      await prefs.remove('user');
       
       print('🔄 Notifying listeners...');
       notifyListeners();
@@ -405,15 +430,25 @@ class AuthService extends ChangeNotifier {
       print('📍 Stack trace: $stackTrace');
       
       // Still clear local data even if server call fails
-      print('🧹 Force clearing session data...');
+      print('🧹 Force clearing local data...');
       _user = null;
       _token = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('token');
+      await prefs.remove('user');
       notifyListeners();
       
       print('🏁 Logout completed with errors\n');
     }
   }
-  // Removed _saveUserToStorage - authentication is now session-only
+  Future<void> _saveUserToStorage() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_token != null && _user != null) {
+      await prefs.setString('token', _token!);
+      await prefs.setString('user', json.encode(_user!.toJson()));
+      print('💾 User data saved to storage');
+    }
+  }
 
   void _emitStudentLogin() {
     if (_user?.role == 'student') {

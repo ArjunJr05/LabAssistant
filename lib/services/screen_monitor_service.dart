@@ -140,8 +140,15 @@ class ScreenMonitorService {
     final clientId = '$ipAddress:$port';
     
     if (_connections.containsKey(clientId)) {
-      print('Already connected to $clientId');
-      return true;
+      // Check if existing connection is still alive
+      try {
+        _sendMessage(clientId, {'type': 'ping'});
+        print('Already connected to $clientId - connection verified');
+        return true;
+      } catch (e) {
+        print('Existing connection to $clientId is dead, reconnecting...');
+        disconnectClient(clientId);
+      }
     }
 
     try {
@@ -149,32 +156,54 @@ class ScreenMonitorService {
       
       final uri = Uri.parse('ws://$ipAddress:$port/');
       
-      // Create connection with timeout
-      final channel = IOWebSocketChannel.connect(uri);
+      // Create connection with timeout and proper error handling
+      final channel = IOWebSocketChannel.connect(
+        uri,
+        pingInterval: const Duration(seconds: 10),
+      );
       
       // Wait for connection with timeout
       await Future.any([
         channel.ready,
-        Future.delayed(const Duration(seconds: 5)).then((_) => 
-          throw TimeoutException('Connection timeout to $ipAddress:$port', const Duration(seconds: 5))
+        Future.delayed(const Duration(seconds: 8)).then((_) => 
+          throw TimeoutException('Connection timeout to $ipAddress:$port', const Duration(seconds: 8))
         ),
       ]);
       
       _connections[clientId] = channel;
       
-      // Listen for messages
+      // Listen for messages with better error handling
       channel.stream.listen(
-        (message) => _handleMessage(clientId, message),
-        onError: (error) => _handleConnectionError(clientId, error),
-        onDone: () => _handleConnectionClosed(clientId),
+        (message) {
+          try {
+            _handleMessage(clientId, message);
+          } catch (e) {
+            print('Error handling message from $clientId: $e');
+          }
+        },
+        onError: (error) {
+          print('Stream error from $clientId: $error');
+          _handleConnectionError(clientId, error);
+        },
+        onDone: () {
+          print('Stream closed for $clientId');
+          _handleConnectionClosed(clientId);
+        },
+        cancelOnError: false, // Don't cancel stream on individual message errors
       );
       
-      // Send initial ping and request handshake
-      await Future.delayed(const Duration(milliseconds: 100));
-      _sendMessage(clientId, {'type': 'ping'});
+      // Send initial ping and request handshake with delay
+      await Future.delayed(const Duration(milliseconds: 200));
       
-      // Also send a handshake request to ensure proper initialization
-      _sendMessage(clientId, {'type': 'handshake_request'});
+      try {
+        _sendMessage(clientId, {'type': 'ping'});
+        await Future.delayed(const Duration(milliseconds: 100));
+        _sendMessage(clientId, {'type': 'handshake_request'});
+      } catch (e) {
+        print('Error sending initial messages to $clientId: $e');
+        disconnectClient(clientId);
+        return false;
+      }
       
       _connectionStatusController?.add('Connected to $ipAddress');
       return true;
@@ -182,22 +211,36 @@ class ScreenMonitorService {
     } on TimeoutException catch (e) {
       print('Connection timeout to $clientId: $e');
       _connectionStatusController?.add('Connection timeout to $ipAddress - Screen capture agent may not be running');
+      _cleanupFailedConnection(clientId);
       return false;
     } on SocketException catch (e) {
       print('Socket error connecting to $clientId: $e');
       _connectionStatusController?.add('Cannot connect to $ipAddress - Screen capture agent not running');
+      _cleanupFailedConnection(clientId);
+      return false;
+    } on WebSocketException catch (e) {
+      print('WebSocket error connecting to $clientId: $e');
+      _connectionStatusController?.add('WebSocket error connecting to $ipAddress');
+      _cleanupFailedConnection(clientId);
       return false;
     } catch (e) {
       print('Failed to connect to $clientId: $e');
       _connectionStatusController?.add('Failed to connect to $ipAddress - Screen capture agent not available');
+      _cleanupFailedConnection(clientId);
       return false;
     }
   }
 
   void disconnectClient(String clientId) {
+    print('Disconnecting client: $clientId');
+    
     final connection = _connections[clientId];
     if (connection != null) {
-      connection.sink.close();
+      try {
+        connection.sink.close();
+      } catch (e) {
+        print('Error closing connection for $clientId: $e');
+      }
       _connections.remove(clientId);
     }
     
@@ -206,6 +249,15 @@ class ScreenMonitorService {
       _clientsController?.add(connectedClients);
     }
     
+    _latestFrames.remove(clientId);
+    
+    final ipAddress = clientId.split(':')[0];
+    _connectionStatusController?.add('Disconnected from $ipAddress');
+  }
+  
+  void _cleanupFailedConnection(String clientId) {
+    _connections.remove(clientId);
+    _clients.remove(clientId);
     _latestFrames.remove(clientId);
   }
 
@@ -307,7 +359,23 @@ class ScreenMonitorService {
 
   void _handleConnectionError(String clientId, dynamic error) {
     print('Connection error with $clientId: $error');
-    disconnectClient(clientId);
+    
+    // Check if it's a recoverable error
+    final errorString = error.toString().toLowerCase();
+    if (errorString.contains('timeout') || errorString.contains('network')) {
+      print('Network error detected for $clientId, attempting reconnection...');
+      disconnectClient(clientId);
+      
+      // Attempt reconnection after a delay
+      Future.delayed(const Duration(seconds: 3), () {
+        final ipAddress = clientId.split(':')[0];
+        connectToClient(ipAddress);
+      });
+    } else {
+      // Non-recoverable error
+      disconnectClient(clientId);
+    }
+    
     _connectionStatusController?.add('Connection lost with ${clientId.split(':')[0]}');
   }
 
@@ -320,10 +388,18 @@ class ScreenMonitorService {
     final connection = _connections[clientId];
     if (connection != null) {
       try {
-        connection.sink.add(json.encode(message));
+        final jsonMessage = json.encode(message);
+        connection.sink.add(jsonMessage);
       } catch (e) {
         print('Error sending message to $clientId: $e');
+        // If sending fails, the connection might be dead
+        if (e.toString().contains('WebSocket') || e.toString().contains('closed')) {
+          print('Connection appears to be dead, disconnecting $clientId');
+          disconnectClient(clientId);
+        }
       }
+    } else {
+      print('No connection found for $clientId when trying to send message');
     }
   }
 
@@ -378,7 +454,7 @@ class ScreenMonitorService {
 
   void _checkClientTimeouts() {
     final now = DateTime.now();
-    final timeoutDuration = const Duration(seconds: 30);
+    final timeoutDuration = const Duration(seconds: 45); // Increased timeout
     
     final timedOutClients = <String>[];
     
@@ -390,8 +466,15 @@ class ScreenMonitorService {
     }
     
     for (final clientId in timedOutClients) {
-      print('Client timeout: $clientId');
+      print('Client timeout: $clientId (last seen: ${_clients[clientId]?.lastSeen})');
       disconnectClient(clientId);
+      
+      // Attempt to reconnect to timed out clients
+      Future.delayed(const Duration(seconds: 2), () {
+        final ipAddress = clientId.split(':')[0];
+        print('Attempting to reconnect to timed out client: $ipAddress');
+        connectToClient(ipAddress);
+      });
     }
   }
 

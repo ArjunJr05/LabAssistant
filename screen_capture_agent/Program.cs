@@ -24,6 +24,8 @@ namespace ScreenCaptureAgent
         private static bool _isRunning = false;
         private static System.Threading.Timer _captureTimer;
         private static readonly object _captureLock = new object();
+        private static readonly SemaphoreSlim _sendSemaphore = new SemaphoreSlim(1, 1);
+        private static volatile bool _isSending = false;
 
         static async Task Main(string[] args)
         {
@@ -140,15 +142,33 @@ namespace ScreenCaptureAgent
                 var buffer = new byte[1024];
                 while (webSocket.State == WebSocketState.Open)
                 {
-                    var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-                    
-                    if (result.MessageType == WebSocketMessageType.Text)
+                    try
                     {
-                        var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                        await HandleIncomingMessage(webSocket, message);
+                        using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
+                        {
+                            var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
+                            
+                            if (result.MessageType == WebSocketMessageType.Text)
+                            {
+                                var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                                await HandleIncomingMessage(webSocket, message);
+                            }
+                            else if (result.MessageType == WebSocketMessageType.Close)
+                            {
+                                Console.WriteLine("WebSocket close message received");
+                                break;
+                            }
+                        }
                     }
-                    else if (result.MessageType == WebSocketMessageType.Close)
+                    catch (OperationCanceledException)
                     {
+                        // Timeout on receive - check if connection is still alive
+                        if (webSocket.State != WebSocketState.Open)
+                            break;
+                    }
+                    catch (WebSocketException ex)
+                    {
+                        Console.WriteLine($"WebSocket receive error: {ex.Message}");
                         break;
                     }
                 }
@@ -159,8 +179,32 @@ namespace ScreenCaptureAgent
             }
             finally
             {
+                // Clean shutdown
                 _captureTimer?.Dispose();
-                webSocket?.Dispose();
+                _captureTimer = null;
+                
+                if (webSocket != null)
+                {
+                    try
+                    {
+                        if (webSocket.State == WebSocketState.Open)
+                        {
+                            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Connection closed", CancellationToken.None);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error closing WebSocket: {ex.Message}");
+                    }
+                    finally
+                    {
+                        webSocket.Dispose();
+                    }
+                }
+                
+                // Reset sending state
+                _isSending = false;
+                
                 Console.WriteLine("Admin disconnected");
             }
         }
@@ -204,42 +248,47 @@ namespace ScreenCaptureAgent
 
         static async Task CaptureAndSendScreen(WebSocket webSocket)
         {
-            if (webSocket.State != WebSocketState.Open) return;
+            if (webSocket.State != WebSocketState.Open || _isSending) return;
             
-            lock (_captureLock)
+            // Skip this frame if we're already sending one
+            if (!await _sendSemaphore.WaitAsync(0))
             {
-                try
+                return; // Skip this frame to prevent concurrent sends
+            }
+            
+            try
+            {
+                _isSending = true;
+                
+                byte[] screenData = null;
+                lock (_captureLock)
                 {
-                    byte[] screenData = CaptureScreen();
-                    if (screenData != null)
+                    screenData = CaptureScreen();
+                }
+                
+                if (screenData != null && webSocket.State == WebSocketState.Open)
+                {
+                    var frameMessage = new
                     {
-                        var frameMessage = new
-                        {
-                            type = "frame",
-                            timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                            data = Convert.ToBase64String(screenData),
-                            format = "jpeg",
-                            width = CAPTURE_WIDTH,
-                            height = CAPTURE_HEIGHT
-                        };
-                        
-                        _ = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                await SendJsonMessage(webSocket, frameMessage);
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"Error sending frame: {ex.Message}");
-                            }
-                        });
-                    }
+                        type = "frame",
+                        timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                        data = Convert.ToBase64String(screenData),
+                        format = "jpeg",
+                        width = CAPTURE_WIDTH,
+                        height = CAPTURE_HEIGHT
+                    };
+                    
+                    await SendJsonMessage(webSocket, frameMessage);
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error capturing screen: {ex.Message}");
-                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error sending frame: {ex.Message}");
+            }
+            finally
+            {
+                _isSending = false;
+                _sendSemaphore.Release();
             }
         }
 
@@ -302,9 +351,27 @@ namespace ScreenCaptureAgent
         {
             if (webSocket.State != WebSocketState.Open) return;
             
-            string json = JsonConvert.SerializeObject(message);
-            byte[] buffer = Encoding.UTF8.GetBytes(json);
-            await webSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, CancellationToken.None);
+            try
+            {
+                string json = JsonConvert.SerializeObject(message);
+                byte[] buffer = Encoding.UTF8.GetBytes(json);
+                
+                // Use a timeout to prevent hanging
+                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                {
+                    await webSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, cts.Token);
+                }
+            }
+            catch (WebSocketException ex)
+            {
+                Console.WriteLine($"WebSocket send error: {ex.Message}");
+                throw; // Re-throw to handle connection cleanup
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("WebSocket send timeout");
+                throw;
+            }
         }
 
         static string GetLocalIPAddress()
@@ -334,8 +401,20 @@ namespace ScreenCaptureAgent
         {
             _isRunning = false;
             _captureTimer?.Dispose();
-            _httpListener?.Stop();
-            _httpListener?.Close();
+            _captureTimer = null;
+            _isSending = false;
+            
+            try
+            {
+                _httpListener?.Stop();
+                _httpListener?.Close();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error stopping HTTP listener: {ex.Message}");
+            }
+            
+            _sendSemaphore?.Dispose();
         }
     }
 }

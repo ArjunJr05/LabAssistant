@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:labassistant/screens/admin_dashboard.dart';
 import 'package:labassistant/screens/students_screen.dart';
 import 'package:labassistant/services/auth_service.dart';
+import 'package:labassistant/services/config_service.dart';
 import 'package:provider/provider.dart';
 import 'dart:ui';
 
@@ -810,6 +811,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     bool success;
 
     if (_isLogin) {
+      // For admin login, set up IP configuration first
+      if (widget.isAdminMode) {
+        await ConfigService.setServerIpForAdmin();
+      }
+      
       success = await authService.login(
         _enrollController.text.trim(),
         _passwordController.text,

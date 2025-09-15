@@ -629,11 +629,35 @@ Future<List<Map<String, dynamic>>> getCompletedExercises() async {
     try {
       print('Creating exercise with data: $exerciseData');
       
+      // Ensure all values are properly serializable
+      final cleanedData = <String, dynamic>{};
+      exerciseData.forEach((key, value) {
+        if (value is List) {
+          cleanedData[key] = value.map((item) {
+            if (item is Map) {
+              return Map<String, dynamic>.from(item);
+            }
+            return item;
+          }).toList();
+        } else if (value is Map) {
+          cleanedData[key] = Map<String, dynamic>.from(value);
+        } else {
+          cleanedData[key] = value;
+        }
+      });
+      
+      print('Cleaned exercise data: $cleanedData');
+      final jsonBody = json.encode(cleanedData);
+      print('JSON body to send: $jsonBody');
+      
       final url = await baseUrl;
       final response = await http.post(
         Uri.parse('$url/admin/exercises'),
-        headers: authService.authHeaders,
-        body: json.encode(exerciseData),
+        headers: {
+          ...authService.authHeaders,
+          'Content-Type': 'application/json',
+        },
+        body: jsonBody,
       );
 
       print('Create exercise response status: ${response.statusCode}');
@@ -651,6 +675,38 @@ Future<List<Map<String, dynamic>>> getCompletedExercises() async {
       }
     } catch (e) {
       print('Error creating exercise: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> updateExercise(int exerciseId, Map<String, dynamic> exerciseData) async {
+    try {
+      print('Updating exercise $exerciseId with data: $exerciseData');
+      
+      final url = await baseUrl;
+      final response = await http.put(
+        Uri.parse('$url/admin/exercises/$exerciseId'),
+        headers: authService.authHeaders,
+        body: json.encode(exerciseData),
+      );
+
+      print('Update exercise response status: ${response.statusCode}');
+      print('Update exercise response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        return true;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else if (response.statusCode == 404) {
+        throw Exception('Exercise not found.');
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception('Failed to update exercise: ${errorData['message'] ?? response.body}');
+      }
+    } catch (e) {
+      print('Error updating exercise: $e');
       rethrow;
     }
   }

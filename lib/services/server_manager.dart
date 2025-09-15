@@ -32,8 +32,8 @@ class ServerManager extends ChangeNotifier {
       
       // Get the backend directory path
       final backendPath = Platform.isWindows 
-          ? r'C:\Users\user\labassistant\backend'
-          : '/Users/user/labassistant/backend';
+          ? r'C:\Users\arjun\labassistant\backend'
+          : '/Users/arjun/labassistant/backend';
       
       // Check if backend directory exists
       final backendDir = Directory(backendPath);

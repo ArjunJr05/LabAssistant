@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:labassistant/models/excercise_model.dart';
+import 'package:labassistant/screens/creation.dart';
 import 'package:labassistant/services/api_services.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
@@ -370,10 +371,30 @@ class _ExerciseManagementScreenState extends State<ExerciseManagementScreen>
 
   void _showCreateExerciseDialog() {
     if (selectedSubject == null) {
-      _showErrorSnackBar('Please select a subject first');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a subject first')),
+      );
       return;
     }
 
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CreateExerciseScreen(subject: selectedSubject!),
+      ),
+    ).then((_) => _loadExercises(selectedSubject!.id));
+  }
+
+  void _editExercise(Exercise exercise) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CreateExerciseScreen(
+          subject: selectedSubject!,
+          exercise: exercise,
+        ),
+      ),
+    ).then((_) => _loadExercises(selectedSubject!.id));
   }
 
   void _showErrorSnackBar(String message) {
@@ -726,141 +747,136 @@ class _ExerciseManagementScreenState extends State<ExerciseManagementScreen>
                                     : GridView.builder(
                                         padding: const EdgeInsets.all(24),
                                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                          crossAxisCount: 3,
-                                          crossAxisSpacing: 20,
-                                          mainAxisSpacing: 20,
-                                          childAspectRatio: 1.2,
+                                          crossAxisCount: 4,
+                                          crossAxisSpacing: 16,
+                                          mainAxisSpacing: 16,
+                                          childAspectRatio: 1.4,
                                         ),
                                         itemCount: exercises.length,
                                         itemBuilder: (context, index) {
                                           final exercise = exercises[index];
                                           
-                                          return TweenAnimationBuilder<double>(
-                                            duration: Duration(milliseconds: 600 + (index * 100)),
-                                            tween: Tween<double>(begin: 0, end: 1),
-                                            builder: (context, animationValue, child) {
-                                              return Transform.scale(
-                                                scale: animationValue,
-                                                child: Container(
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.white,
-                                                    borderRadius: BorderRadius.circular(16),
-                                                    boxShadow: const [
-                                                      BoxShadow(
-                                                        color: Color(0x0F000000),
-                                                        offset: Offset(0, 4),
-                                                        blurRadius: 20,
+                                          return Container(
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: const Color(0xFFE2E8F0),
+                                                width: 1,
+                                              ),
+                                              boxShadow: const [
+                                                BoxShadow(
+                                                  color: Color(0x08000000),
+                                                  offset: Offset(0, 2),
+                                                  blurRadius: 8,
+                                                ),
+                                              ],
+                                            ),
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(16),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Container(
+                                                        padding: const EdgeInsets.all(6),
+                                                        decoration: BoxDecoration(
+                                                          color: _getDifficultyColor(exercise.difficultyLevel).withOpacity(0.1),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                        ),
+                                                        child: Icon(
+                                                          Icons.code_rounded,
+                                                          color: _getDifficultyColor(exercise.difficultyLevel),
+                                                          size: 14,
+                                                        ),
+                                                      ),
+                                                      const Spacer(),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                        decoration: BoxDecoration(
+                                                          color: _getDifficultyColor(exercise.difficultyLevel).withOpacity(0.1),
+                                                          borderRadius: BorderRadius.circular(8),
+                                                        ),
+                                                        child: Text(
+                                                          exercise.difficultyLevel.toUpperCase(),
+                                                          style: TextStyle(
+                                                            fontSize: 9,
+                                                            fontWeight: FontWeight.bold,
+                                                            color: _getDifficultyColor(exercise.difficultyLevel),
+                                                          ),
+                                                        ),
                                                       ),
                                                     ],
                                                   ),
-                                                  child: Padding(
-                                                    padding: const EdgeInsets.all(20),
-                                                    child: Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        Row(
-                                                          children: [
-                                                            Container(
+                                                  const SizedBox(height: 12),
+                                                  Text(
+                                                    exercise.title,
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Color(0xFF1E293B),
+                                                    ),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Expanded(
+                                                    child: Text(
+                                                      exercise.description,
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                        color: Color(0xFF64748B),
+                                                      ),
+                                                      maxLines: 2,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: Material(
+                                                          color: const Color(0xFF3B82F6).withOpacity(0.1),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          child: InkWell(
+                                                            borderRadius: BorderRadius.circular(6),
+                                                            onTap: () => _editExercise(exercise),
+                                                            child: Container(
                                                               padding: const EdgeInsets.all(8),
-                                                              decoration: BoxDecoration(
-                                                                color: _getDifficultyColor(exercise.difficultyLevel).withOpacity(0.1),
-                                                                borderRadius: BorderRadius.circular(8),
-                                                              ),
-                                                              child: Icon(
-                                                                Icons.code_rounded,
-                                                                color: _getDifficultyColor(exercise.difficultyLevel),
+                                                              child: const Icon(
+                                                                Icons.edit_rounded,
+                                                                color: Color(0xFF3B82F6),
                                                                 size: 16,
                                                               ),
                                                             ),
-                                                            const Spacer(),
-                                                            Container(
-                                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                              decoration: BoxDecoration(
-                                                                color: _getDifficultyColor(exercise.difficultyLevel).withOpacity(0.1),
-                                                                borderRadius: BorderRadius.circular(12),
-                                                              ),
-                                                              child: Text(
-                                                                exercise.difficultyLevel.toUpperCase(),
-                                                                style: TextStyle(
-                                                                  fontSize: 10,
-                                                                  fontWeight: FontWeight.bold,
-                                                                  color: _getDifficultyColor(exercise.difficultyLevel),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                        const SizedBox(height: 16),
-                                                        Text(
-                                                          exercise.title,
-                                                          style: const TextStyle(
-                                                            fontSize: 16,
-                                                            fontWeight: FontWeight.bold,
-                                                            color: Color(0xFF1E293B),
-                                                          ),
-                                                          maxLines: 2,
-                                                          overflow: TextOverflow.ellipsis,
-                                                        ),
-                                                        const SizedBox(height: 8),
-                                                        Expanded(
-                                                          child: Text(
-                                                            exercise.description,
-                                                            style: const TextStyle(
-                                                              fontSize: 14,
-                                                              color: Color(0xFF64748B),
-                                                            ),
-                                                            maxLines: 3,
-                                                            overflow: TextOverflow.ellipsis,
                                                           ),
                                                         ),
-                                                        const SizedBox(height: 16),
-                                                        Row(
-                                                          children: [
-                                                            Expanded(
-                                                              child: Container(
-                                                                padding: const EdgeInsets.all(8),
-                                                                decoration: BoxDecoration(
-                                                                  color: const Color(0xFF3B82F6).withOpacity(0.1),
-                                                                  borderRadius: BorderRadius.circular(8),
-                                                                ),
-                                                                child: InkWell(
-                                                                  onTap: () {
-                                                                    _showErrorSnackBar('Edit functionality not implemented yet');
-                                                                  },
-                                                                  child: const Icon(
-                                                                    Icons.edit_rounded,
-                                                                    color: Color(0xFF3B82F6),
-                                                                    size: 18,
-                                                                  ),
-                                                                ),
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Expanded(
+                                                        child: Material(
+                                                          color: const Color(0xFFDC2626).withOpacity(0.1),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          child: InkWell(
+                                                            borderRadius: BorderRadius.circular(6),
+                                                            onTap: () => _deleteExercise(exercise),
+                                                            child: Container(
+                                                              padding: const EdgeInsets.all(8),
+                                                              child: const Icon(
+                                                                Icons.delete_rounded,
+                                                                color: Color(0xFFDC2626),
+                                                                size: 16,
                                                               ),
                                                             ),
-                                                            const SizedBox(width: 12),
-                                                            Expanded(
-                                                              child: Container(
-                                                                padding: const EdgeInsets.all(8),
-                                                                decoration: BoxDecoration(
-                                                                  color: const Color(0xFFDC2626).withOpacity(0.1),
-                                                                  borderRadius: BorderRadius.circular(8),
-                                                                ),
-                                                                child: InkWell(
-                                                                  onTap: () => _deleteExercise(exercise),
-                                                                  child: const Icon(
-                                                                    Icons.delete_rounded,
-                                                                    color: Color(0xFFDC2626),
-                                                                    size: 18,
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ],
+                                                          ),
                                                         ),
-                                                      ],
-                                                    ),
+                                                      ),
+                                                    ],
                                                   ),
-                                                ),
-                                              );
-                                            },
+                                                ],
+                                              ),
+                                            ),
                                           );
                                         },
                                       ),

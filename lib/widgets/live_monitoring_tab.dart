@@ -30,9 +30,26 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
       print('LiveMonitoringTab: Frame stream error: $error');
     });
     
+<<<<<<< HEAD
     // Listen to client connections
     _screenService.clientsStream.listen((clients) {
       print('LiveMonitoringTab: Connected clients: ${clients.map((c) => '${c.id}@${c.ipAddress}').join(', ')}');
+=======
+    // Listen to client connections and disconnections
+    _screenService.clientsStream.listen((clients) {
+      print('LiveMonitoringTab: Connected clients: ${clients.map((c) => '${c.id}@${c.ipAddress}').join(', ')}');
+      
+      // Clean up frames for disconnected clients
+      final connectedClientIds = clients.map((c) => c.id).toSet();
+      final cachedClientIds = _monitorState.frameCache.keys.toSet();
+      
+      // Remove frames for clients that are no longer connected
+      for (String cachedId in cachedClientIds) {
+        if (!connectedClientIds.contains(cachedId)) {
+          _monitorState.removeClient(cachedId);
+        }
+      }
+>>>>>>> 041c61fd020faca8a541e97373a304810967dde2
     });
   }
 
@@ -41,12 +58,7 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
     return AnimatedBuilder(
       animation: _monitorState,
       builder: (context, child) {
-        // If in fullscreen mode, show the fullscreen view
-        if (_monitorState.fullscreenClientId != null) {
-          return _buildFullscreenView();
-        }
-
-        // Otherwise show the main live monitoring interface
+        // Show the main live monitoring interface
         return Column(
           children: [
             // Header with online students count
@@ -245,7 +257,6 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
   }
 
   Widget _buildStudentTile(User student, bool isConnected) {
-
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       child: Material(
@@ -338,6 +349,7 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
     );
   }
 
+<<<<<<< HEAD
   Widget _buildFullscreenView() {
     final connectedClients = _screenService.connectedClients;
     final client = connectedClients.firstWhere(
@@ -435,6 +447,8 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
       ),
     );
   }
+=======
+>>>>>>> 041c61fd020faca8a541e97373a304810967dde2
 
   void _connectToStudent(User student) async {
     print('LiveMonitoringTab: Attempting to connect to student: ${student.name} with IP: ${student.ipAddress}');
@@ -461,7 +475,10 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
     );
 
     if (existingClient.id.isNotEmpty) {
+<<<<<<< HEAD
       // Already connected, just show in the monitoring area (don't go fullscreen immediately)
+=======
+>>>>>>> 041c61fd020faca8a541e97373a304810967dde2
       print('LiveMonitoringTab: Already connected to ${student.ipAddress}');
       _showSnackBar('Monitoring ${student.name}', const Color(0xFF10B981));
       return;
@@ -625,7 +642,25 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                             errorBuilder: (context, error, stackTrace) {
                               print('Image error for ${client.id}: $error');
                               return const Center(
+<<<<<<< HEAD
                                 child: Text('Image Error', style: TextStyle(color: Colors.red)),
+=======
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.error_outline,
+                                      color: Colors.red,
+                                      size: 32,
+                                    ),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      'Image Error',
+                                      style: TextStyle(color: Colors.red, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+>>>>>>> 041c61fd020faca8a541e97373a304810967dde2
                               );
                             },
                           ),
@@ -634,6 +669,7 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
+<<<<<<< HEAD
                               const Icon(
                                 Icons.monitor_outlined,
                                 color: Color(0xFF64748B),
@@ -647,11 +683,34 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                                   fontSize: 12,
                                 ),
                                 textAlign: TextAlign.center,
+=======
+                              const CircularProgressIndicator(
+                                color: Color(0xFF64748B),
+                                strokeWidth: 2,
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'Connecting...',
+                                style: TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'IP: ${client.ipAddress}',
+                                style: const TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 10,
+                                  fontFamily: 'monospace',
+                                ),
+>>>>>>> 041c61fd020faca8a541e97373a304810967dde2
                               ),
                             ],
                           ),
                         ),
                   
+<<<<<<< HEAD
                   // Fullscreen button overlay
                   Positioned(
                     top: 8,
@@ -678,6 +737,8 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                       ),
                     ),
                   ),
+=======
+>>>>>>> 041c61fd020faca8a541e97373a304810967dde2
                 ],
               ),
             ),
@@ -720,6 +781,7 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
+<<<<<<< HEAD
                     color: const Color(0xFF10B981).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -729,6 +791,21 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF10B981),
+=======
+                    color: hasFrame 
+                        ? const Color(0xFF10B981).withOpacity(0.1)
+                        : const Color(0xFFF59E0B).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    hasFrame ? 'LIVE' : 'CONNECTING',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: hasFrame 
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFF59E0B),
+>>>>>>> 041c61fd020faca8a541e97373a304810967dde2
                     ),
                   ),
                 ),
@@ -741,6 +818,12 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
   }
 
   Widget _buildEmptyState() {
+<<<<<<< HEAD
+=======
+    final connectedClients = _screenService.connectedClients;
+    final frameCount = _monitorState.frameCache.length;
+    
+>>>>>>> 041c61fd020faca8a541e97373a304810967dde2
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -767,14 +850,86 @@ class _LiveMonitoringTabState extends State<LiveMonitoringTab> {
             ),
           ),
           const SizedBox(height: 8),
+<<<<<<< HEAD
           Text(
             'Click on a student to connect and monitor their screen\n\nDebug Info:\n- Connected clients: ${_screenService.connectedClients.length}\n- Frame cache: ${_monitorState.frameCache.length} items',
             style: const TextStyle(
               fontSize: 12,
+=======
+          const Text(
+            'Click on a student to connect and monitor their screen',
+            style: TextStyle(
+              fontSize: 14,
+>>>>>>> 041c61fd020faca8a541e97373a304810967dde2
               color: Color(0xFF64748B),
             ),
             textAlign: TextAlign.center,
           ),
+<<<<<<< HEAD
+=======
+          const SizedBox(height: 16),
+          // Enhanced debug info
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Debug Information:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF374151),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '• Connected clients: ${connectedClients.length}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF6B7280),
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                Text(
+                  '• Frame cache: $frameCount items',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF6B7280),
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                if (connectedClients.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  const Text(
+                    '• Client IDs:',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF6B7280),
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  ...connectedClients.map((client) => Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Text(
+                      '  - ${client.id} (${client.ipAddress})',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF9CA3AF),
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  )),
+                ],
+              ],
+            ),
+          ),
+>>>>>>> 041c61fd020faca8a541e97373a304810967dde2
         ],
       ),
     );

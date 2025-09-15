@@ -55,14 +55,8 @@ class ServerManager extends ChangeNotifier {
       if (_serverProcess != null) {
         print('✅ Server process started with PID: ${_serverProcess!.pid}');
         
-        // Listen to process output for debugging
-        _serverProcess!.stdout.transform(utf8.decoder).listen((data) {
-          print('📡 Server stdout: $data');
-        });
-        
-        _serverProcess!.stderr.transform(utf8.decoder).listen((data) {
-          print('⚠️ Server stderr: $data');
-        });
+        // Note: Cannot access stdout/stderr for detached processes
+        // This is expected behavior for ProcessStartMode.detached
         
         // Wait a moment for server to start
         await Future.delayed(const Duration(seconds: 3));

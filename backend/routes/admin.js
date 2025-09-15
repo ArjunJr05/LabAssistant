@@ -318,7 +318,6 @@ router.get('/exercises', auth, adminOnly, async (req, res) => {
   }
 });
 
-// Enhanced get online users route for routes/admin.js
 router.get('/online-users', auth, adminOnly, async (req, res) => {
   try {
     console.log('Admin requesting online users...');
@@ -327,7 +326,7 @@ router.get('/online-users', auth, adminOnly, async (req, res) => {
     const result = await pool.query(`
       SELECT 
         id, name, enroll_number, year, section, batch, role, 
-        is_online, last_active, created_at
+        is_online, last_active, created_at, ip_address
       FROM users
       WHERE role = 'student' AND is_online = true
       ORDER BY last_active DESC
@@ -336,7 +335,7 @@ router.get('/online-users', auth, adminOnly, async (req, res) => {
     console.log(`Found ${result.rows.length} students marked as online in database`);
     
     const onlineUsers = result.rows.map(user => {
-      console.log(`  - ${user.name} (${user.enroll_number}) - Last active: ${user.last_active}`);
+      console.log(`  - ${user.name} (${user.enroll_number}) - Last active: ${user.last_active} - IP: ${user.ip_address}`);
       
       return {
         id: user.id,
@@ -348,6 +347,7 @@ router.get('/online-users', auth, adminOnly, async (req, res) => {
         role: user.role,
         isOnline: user.is_online,
         lastActive: user.last_active,
+        ipAddress: user.ip_address,
         status: 'online'
       };
     });

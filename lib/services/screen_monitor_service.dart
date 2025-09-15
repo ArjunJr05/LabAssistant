@@ -239,7 +239,7 @@ class ScreenMonitorService {
   }
 
   void _handleHandshake(String clientId, Map<String, dynamic> data) {
-    final clientInfo = data['clientInfo'];
+    final clientInfo = data['clientInfo'] as Map<String, dynamic>;
     final ipAddress = clientId.split(':')[0];
     
     final client = ClientInfo(
@@ -260,24 +260,21 @@ class ScreenMonitorService {
     print('Client connected: ${client.computerName} (${client.userName}) at $ipAddress');
     _connectionStatusController?.add('Client ${client.computerName} connected');
     
-    // Request screen capture to start
-    _sendMessage(clientId, {
-      'type': 'start_capture',
-      'fps': 10,
-      'quality': 80,
+    // Request screen capture to start with higher FPS for smoother updates
+    Future.delayed(const Duration(milliseconds: 500)).then((_) {
+      _sendMessage(clientId, {
+        'type': 'start_capture',
+        'fps': 30,
+        'quality': 70,
+      });
+      print('ScreenMonitorService: Sent start_capture request to $clientId with 30 FPS');
     });
-    print('ScreenMonitorService: Sent start_capture request to $clientId');
   }
 
   void _handleFrame(String clientId, Map<String, dynamic> data) {
     try {
-      print('ScreenMonitorService: Frame data keys: ${data.keys.toList()}');
-      
       final base64Data = data['data'] as String;
-      print('ScreenMonitorService: Frame data length: ${base64Data.length}');
-      
       final imageData = base64Decode(base64Data);
-      print('ScreenMonitorService: Decoded image data size: ${imageData.length} bytes');
       
       final frame = ScreenFrame(
         clientId: clientId,
@@ -290,8 +287,6 @@ class ScreenMonitorService {
       
       _latestFrames[clientId] = frame;
       _frameController?.add(frame);
-      
-      print('ScreenMonitorService: Frame processed and added to stream for $clientId');
       
       // Update last seen
       if (_clients.containsKey(clientId)) {

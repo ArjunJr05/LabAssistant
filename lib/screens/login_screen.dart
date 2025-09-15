@@ -845,7 +845,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       } else if (widget.isAdminMode) {
         errorMessage = 'Admin login failed. Check credentials and server status.';
       } else if (_isLogin) {
-        errorMessage = 'Student login failed. Make sure admin is logged in first.';
+        errorMessage = 'Student login failed. Searching for admin server on network...';
       } else {
         errorMessage = 'Registration failed. Check your details and try again.';
       }

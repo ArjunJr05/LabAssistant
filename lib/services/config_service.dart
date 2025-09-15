@@ -72,31 +72,116 @@ class ConfigService {
       return _cachedServerIp!;
     }
     
-    // For students, try to get IP from database using current system IP
-    final currentIP = await getCurrentSystemIP();
-    if (currentIP != null) {
-      try {
-        final response = await http.get(
-          Uri.parse('http://$currentIP:$_defaultServerPort/api/admin/ip'),
-          headers: {'Content-Type': 'application/json'},
-        ).timeout(const Duration(seconds: 3));
-        
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          final fetchedIP = data['ip'] as String?;
-          if (fetchedIP != null) {
-            _cachedServerIp = fetchedIP;
-            await prefs.setString(_serverIpKey, fetchedIP);
-            return _cachedServerIp!;
-          }
-        }
-      } catch (e) {
-        print('Failed to fetch admin IP from database: $e');
-      }
+    // For students, try to discover admin IP by scanning common network ranges
+    final adminIp = await _discoverAdminServer();
+    if (adminIp != null) {
+      _cachedServerIp = adminIp;
+      await prefs.setString(_serverIpKey, adminIp);
+      return _cachedServerIp!;
     }
     
     // If all fails, throw an error
     throw Exception('Unable to connect to server. Please ensure admin is logged in and server is running.');
+  }
+  
+  /// Discover admin server by scanning network
+  static Future<String?> _discoverAdminServer() async {
+    try {
+      print('🔍 Discovering admin server on network...');
+      
+      // Get current system IP to determine network range
+      final currentIP = await getCurrentSystemIP();
+      if (currentIP == null || currentIP == 'localhost') {
+        print('❌ Cannot determine network range - no valid IP found');
+        return null;
+      }
+      
+      print('📍 Current system IP: $currentIP');
+      
+      // Extract network prefix (e.g., 172.17.13.x)
+      final ipParts = currentIP.split('.');
+      if (ipParts.length != 4) {
+        print('❌ Invalid IP format: $currentIP');
+        return null;
+      }
+      
+      final networkPrefix = '${ipParts[0]}.${ipParts[1]}.${ipParts[2]}';
+      print('🌐 Scanning network range: $networkPrefix.x');
+      
+      // Common IP ranges to check (prioritize current subnet)
+      final List<String> ipRangesToCheck = [
+        networkPrefix, // Current subnet first
+        '192.168.1',   // Common home network
+        '192.168.0',   // Another common range
+        '10.0.0',      // Corporate network
+      ];
+      
+      // Remove duplicates
+      final uniqueRanges = ipRangesToCheck.toSet().toList();
+      
+      for (final range in uniqueRanges) {
+        print('🔍 Scanning range: $range.x');
+        
+        // Check a reasonable range of IPs (1-254)
+        final futures = <Future<String?>>[];
+        
+        // Scan in batches to avoid overwhelming the network
+        for (int i = 1; i <= 254; i += 10) {
+          final endRange = (i + 9 > 254) ? 254 : i + 9;
+          
+          for (int j = i; j <= endRange; j++) {
+            final testIp = '$range.$j';
+            
+            // Skip current system IP
+            if (testIp == currentIP) continue;
+            
+            futures.add(_checkAdminServer(testIp));
+          }
+          
+          // Process batch and check for results
+          final results = await Future.wait(futures, eagerError: false);
+          final adminIp = results.firstWhere((ip) => ip != null, orElse: () => null);
+          
+          if (adminIp != null) {
+            print('✅ Found admin server at: $adminIp');
+            return adminIp;
+          }
+          
+          futures.clear();
+          
+          // Small delay between batches
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      }
+      
+      print('❌ No admin server found on network');
+      return null;
+      
+    } catch (e) {
+      print('❌ Error during admin server discovery: $e');
+      return null;
+    }
+  }
+  
+  /// Check if a specific IP has an admin server running
+  static Future<String?> _checkAdminServer(String ip) async {
+    try {
+      final response = await http.get(
+        Uri.parse('http://$ip:$_defaultServerPort/api/admin/ip'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 2));
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['ip'] != null) {
+          print('✅ Admin server found at $ip with stored IP: ${data['ip']}');
+          return data['ip'] as String;
+        }
+      }
+    } catch (e) {
+      // Silently ignore connection errors during discovery
+    }
+    return null;
   }
   
   /// Set server IP during admin login

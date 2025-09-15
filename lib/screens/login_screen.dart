@@ -6,6 +6,8 @@ import 'package:labassistant/services/auth_service.dart';
 import 'package:labassistant/services/config_service.dart';
 import 'package:provider/provider.dart';
 import 'dart:ui';
+import 'dart:io';
+import 'package:process_run/shell.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
@@ -845,33 +847,33 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       } else if (widget.isAdminMode) {
         errorMessage = 'Admin login failed. Check credentials and server status.';
       } else if (_isLogin) {
-        errorMessage = 'Student login failed. Make sure admin is logged in first.';
+        errorMessage = 'Student login failed. Searching for admin server on network...';
       } else {
         errorMessage = 'Registration failed. Check your details and try again.';
       }
       _showError(errorMessage);
     } else if (success && mounted) {
-      // Handle successful authentication
+      // Handle successful authentication with new navigation logic
       if (widget.isAdminMode) {
-        _showSuccess('Admin login successful!');
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const AdminDashboard()),
-            );
-          }
-        });
+        _showSuccess('Admin login successful! Starting server...');
+        // Admin: Start server and navigate to StudentDashboard
+        _handleAdminLoginSuccess();
       } else {
-        _showSuccess(_isLogin ? 'Student login successful!' : 'Registration successful!');
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const StudentDashboard()),
-            );
-          }
-        });
+        _showSuccess(_isLogin ? 'Student login successful! Launching monitoring...' : 'Registration successful!');
+        // Student: Navigate to StudentDashboard and launch ScreenCaptureAgent
+        if (_isLogin) {
+          _handleStudentLoginSuccess();
+        } else {
+          // For registration, just navigate normally
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const StudentDashboard()),
+              );
+            }
+          });
+        }
       }
     }
   }
@@ -910,6 +912,86 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  // Handle admin login success: Start server + navigate to StudentDashboard
+  Future<void> _handleAdminLoginSuccess() async {
+    try {
+      print('🔑 Admin login successful - Starting server and navigating to StudentDashboard');
+      
+      // Start server and navigate simultaneously
+      await Future.wait([
+        // Server should already be started by AuthService, just ensure it's running
+        Future.delayed(const Duration(milliseconds: 500)), // Small delay for server startup
+        // Navigate to StudentDashboard after delay
+        Future.delayed(const Duration(seconds: 2)).then((_) {
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const AdminDashboard()),
+            );
+          }
+        }),
+      ]);
+      
+      print('✅ Admin processes completed successfully');
+    } catch (e) {
+      print('❌ Error in admin login process: $e');
+      _showError('Failed to complete admin setup: $e');
+    }
+  }
+
+  // Handle student login success: Navigate to StudentDashboard + launch ScreenCaptureAgent
+  Future<void> _handleStudentLoginSuccess() async {
+    try {
+      print('👨‍🎓 Student login successful - Launching monitoring and navigating to StudentDashboard');
+      
+      // Launch ScreenCaptureAgent and navigate simultaneously
+      await Future.wait([
+        // Launch ScreenCaptureAgent.exe as administrator
+        _launchScreenCaptureAgent(),
+        // Navigate to StudentDashboard after delay
+        Future.delayed(const Duration(seconds: 2)).then((_) {
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const AdminDashboard()),
+            );
+          }
+        }),
+      ]);
+      
+      print('✅ Student processes completed successfully');
+    } catch (e) {
+      print('❌ Error in student login process: $e');
+      _showError('Failed to complete student setup: $e');
+    }
+  }
+
+  // Launch ScreenCaptureAgent.exe as administrator
+  Future<void> _launchScreenCaptureAgent() async {
+    try {
+      final agentPath = r'C:\Users\user\LabAssistant\screen_capture_agent\dist\ScreenCaptureAgent.exe';
+      print('🚀 Launching ScreenCaptureAgent at: $agentPath');
+      
+      // Check if file exists
+      final agentFile = File(agentPath);
+      if (!await agentFile.exists()) {
+        throw Exception('ScreenCaptureAgent.exe not found at: $agentPath');
+      }
+      
+      // Launch as administrator using PowerShell
+      final shell = Shell();
+      await shell.run('''
+        Start-Process -FilePath "$agentPath" -Verb RunAs -WindowStyle Hidden
+      ''');
+      
+      print('✅ ScreenCaptureAgent launched successfully as administrator');
+    } catch (e) {
+      print('❌ Failed to launch ScreenCaptureAgent: $e');
+      // Don't throw error - continue with navigation even if agent fails
+      _showError('Warning: Screen monitoring may not be available');
+    }
   }
 
   @override

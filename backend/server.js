@@ -629,6 +629,7 @@ async function initDatabase() {
     // Add columns if they don't exist
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT false`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45) DEFAULT NULL`);
     await pool.query(`ALTER TABLE exercises ADD COLUMN IF NOT EXISTS input_format TEXT`);
     await pool.query(`ALTER TABLE exercises ADD COLUMN IF NOT EXISTS output_format TEXT`);
     await pool.query(`ALTER TABLE exercises ADD COLUMN IF NOT EXISTS constraints TEXT`);

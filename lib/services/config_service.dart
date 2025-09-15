@@ -57,11 +57,9 @@ class ConfigService {
       return _cachedServerIp!;
     }
     
-    // Always try to fetch admin IP from database first
     final adminIp = await _fetchAdminIpFromDatabase();
     if (adminIp != null) {
       _cachedServerIp = adminIp;
-      // Store the fetched IP for future use
       await prefs.setString(_serverIpKey, adminIp);
       return _cachedServerIp!;
     }

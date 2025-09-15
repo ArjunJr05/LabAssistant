@@ -57,17 +57,33 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AuthService>(
       builder: (context, authService, child) {
-        // Always start from role selection - no persistent authentication
+        // Show loading screen while checking authentication
+        if (authService.isLoading) {
+          return const Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading...'),
+                ],
+              ),
+            ),
+          );
+        }
+
+        // If not authenticated, show login screen
         if (!authService.isAuthenticated) {
           return const RoleSelectionScreen();
         }
 
-        // Debug: Print user info for active session
-        print('AuthWrapper - Active Session - User: ${authService.user?.name}');
-        print('AuthWrapper - Active Session - Role: ${authService.user?.role}');
-        print('AuthWrapper - Active Session - Enroll Number: ${authService.user?.enrollNumber}');
+        // Debug: Print user info
+        print('AuthWrapper - User: ${authService.user?.name}');
+        print('AuthWrapper - Role: ${authService.user?.role}');
+        print('AuthWrapper - Enroll Number: ${authService.user?.enrollNumber}');
 
-        // Route based on user role for current session only
+        // Route based on user role
         if (authService.user?.role == 'admin') {
           // Double-check admin credentials
           if (authService.user?.enrollNumber == 'ADMIN001') {

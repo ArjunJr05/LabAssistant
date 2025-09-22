@@ -927,43 +927,50 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   
   Future<void> _startScreenCaptureAndNavigateToStudent() async {
   try {
-    // Start the screen capture agent
     print('Starting screen capture agent...');
     
-    // Use the exact path you specified
     const agentPath = r'C:\Users\arjun\LabAssistant\screen_capture_agent\dist\ScreenCaptureAgent.exe';
     
     if (await File(agentPath).exists()) {
-      // Start the screen capture agent in the background
+      if (mounted) {
+        _showSuccess('Launching screen capture agent... Please accept UAC prompt.');
+      }
+      
+      // Start the process with UAC elevation
       await Process.start(
-        agentPath,
-        [], // No additional arguments needed
-        mode: ProcessStartMode.detached,
+        'cmd',
+        [
+          '/c',
+          'powershell',
+          '-Command',
+          'Start-Process -FilePath "$agentPath" -Verb RunAs'
+        ],
+        mode: ProcessStartMode.normal,
+        runInShell: true,
       );
       
-      print('Screen capture agent started successfully');
+      print('Screen capture agent launch command executed');
+      
+      // Wait for UAC interaction and process startup
+      await Future.delayed(const Duration(seconds: 3));
       
       if (mounted) {
-        _showSuccess('Screen capture started! Navigating to student dashboard...');
-        
-        // Small delay to ensure the process starts
-        await Future.delayed(const Duration(seconds: 1));
+        _showSuccess('Navigating to student dashboard...');
         
         // Navigate to student dashboard
-        if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const StudentDashboard()),
-          );
-        }
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const StudentDashboard()),
+        );
       }
+      
     } else {
       print('Screen capture agent not found at: $agentPath');
       if (mounted) {
-        _showError('Screen capture agent not found at the specified location.');
+        _showError('Screen capture agent not found.');
         
-        // Still navigate to student dashboard
-        Future.delayed(const Duration(seconds: 2), () {
+        // Still navigate to dashboard
+        Future.delayed(const Duration(seconds: 1), () {
           if (mounted) {
             Navigator.pushReplacement(
               context,
@@ -978,8 +985,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (mounted) {
       _showError('Failed to start screen capture: $e');
       
-      // Still navigate to student dashboard even if screen capture fails
-      Future.delayed(const Duration(seconds: 2), () {
+      // Still navigate to dashboard even if screen capture fails
+      Future.delayed(const Duration(seconds: 1), () {
         if (mounted) {
           Navigator.pushReplacement(
             context,

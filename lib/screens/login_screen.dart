@@ -931,7 +931,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     print('Starting screen capture agent...');
     
     // Use the exact path you specified
-    const agentPath = r'C:\Users\arjun\LabAssistant\screen_capture_agent\dist\ScreenCaptureAgent.exe';
+    const agentPath = r'C:\Users\user\LabAssistant\screen_capture_agent\dist\ScreenCaptureAgent.exe';
     
     if (await File(agentPath).exists()) {
       // Start the screen capture agent in the background

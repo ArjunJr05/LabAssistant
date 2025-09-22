@@ -2,23 +2,19 @@
 const { Pool } = require('pg');
 
 // Database configuration
-const pool = new Pool({
-  user: 'postgres',
+const dbConfig = {
   host: 'localhost',
-  database: 'lab_monitoring',  // This must match what you create
-  password: '3513',  // Use the same password from pgAdmin
+  user: 'postgres',
+  password: '3513',
+  database: 'lab_monitoring',
   port: 5432,
-});
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+};
 
-// Test database connection on startup
-pool.on('connect', () => {
-  console.log('✅ Connected to PostgreSQL database');
-});
-
-pool.on('error', (err) => {
-  console.error('❌ Unexpected error on idle client:', err);
-  process.exit(-1);
-});
+// Create connection pool
+const pool = new Pool(dbConfig);
 
 // Function to test the connection
 const testConnection = async () => {
@@ -44,8 +40,5 @@ const testConnection = async () => {
   }
 };
 
-// Export both pool and testConnection
-module.exports = { 
-  pool,
-  testConnection
-};
+// Export pool
+module.exports = { pool, testConnection };

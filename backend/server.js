@@ -653,6 +653,11 @@ async function initDatabase() {
     await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS language VARCHAR(20) DEFAULT 'c'`);
     await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS test_cases_passed INTEGER DEFAULT 0`);
     await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS total_test_cases INTEGER DEFAULT 0`);
+    await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS malpractice BOOLEAN DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS tab_switches INTEGER DEFAULT 0`);
+    await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS activity_type VARCHAR(50) DEFAULT 'submission'`);
+    await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS student_id INTEGER`);
+    await pool.query(`UPDATE submissions SET student_id = user_id WHERE student_id IS NULL`);
     
     console.log('✅ Database tables initialized successfully');
     

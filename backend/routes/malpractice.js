@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../config/database');
+const { pool } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 
 // Track tab switch and update malpractice status
@@ -13,20 +13,21 @@ router.post('/tab-switch', authenticateToken, async (req, res) => {
     let query = `
       SELECT id, tab_switches, malpractice 
       FROM submissions 
-      WHERE student_id = ? AND exercise_id = ? AND activity_type = 'submission'
+      WHERE student_id = $1 AND exercise_id = $2 AND activity_type = 'submission'
       ORDER BY created_at DESC 
       LIMIT 1
     `;
     
-    let [rows] = await db.execute(query, [studentId, exerciseId]);
+    let result = await pool.query(query, [studentId, exerciseId]);
+    let rows = result.rows;
     
     if (rows.length === 0) {
       // Create initial submission record
       query = `
         INSERT INTO submissions (student_id, exercise_id, activity_type, tab_switches, malpractice)
-        VALUES (?, ?, 'submission', 1, FALSE)
+        VALUES ($1, $2, 'submission', 1, FALSE)
       `;
-      await db.execute(query, [studentId, exerciseId]);
+      await pool.query(query, [studentId, exerciseId]);
       
       res.json({ 
         success: true, 
@@ -42,10 +43,10 @@ router.post('/tab-switch', authenticateToken, async (req, res) => {
       // Update submission with new tab switch count and malpractice status
       query = `
         UPDATE submissions 
-        SET tab_switches = ?, malpractice = ?
-        WHERE id = ?
+        SET tab_switches = $1, malpractice = $2
+        WHERE id = $3
       `;
-      await db.execute(query, [newTabSwitches, isMalpractice, submission.id]);
+      await pool.query(query, [newTabSwitches, isMalpractice, submission.id]);
       
       let message = '';
       if (isMalpractice) {
@@ -77,11 +78,12 @@ router.get('/check/:exerciseId', authenticateToken, async (req, res) => {
     const query = `
       SELECT malpractice, tab_switches
       FROM submissions
-      WHERE student_id = ? AND exercise_id = ? AND malpractice = TRUE
+      WHERE student_id = $1 AND exercise_id = $2 AND malpractice = TRUE
       LIMIT 1
     `;
 
-    const [rows] = await db.execute(query, [studentId, exerciseId]);
+    const result = await pool.query(query, [studentId, exerciseId]);
+    const rows = result.rows;
     const isBlocked = rows.length > 0;
 
     res.json({ 
@@ -117,11 +119,12 @@ router.get('/history/:exerciseId', authenticateToken, async (req, res) => {
       FROM submissions s
       JOIN users u ON s.student_id = u.id
       JOIN exercises e ON s.exercise_id = e.id
-      WHERE s.exercise_id = ? AND s.malpractice = TRUE
+      WHERE s.exercise_id = $1 AND s.malpractice = TRUE
       ORDER BY s.updated_at DESC
     `;
 
-    const [rows] = await db.execute(query, [exerciseId]);
+    const result = await pool.query(query, [exerciseId]);
+    const rows = result.rows;
     res.json(rows);
   } catch (error) {
     console.error('Error fetching malpractice history:', error);
@@ -158,7 +161,8 @@ router.get('/incidents', authenticateToken, async (req, res) => {
       LIMIT 100
     `;
 
-    const [rows] = await db.execute(query);
+    const result = await pool.query(query);
+    const rows = result.rows;
     res.json(rows);
   } catch (error) {
     console.error('Error fetching malpractice incidents:', error);
@@ -178,10 +182,10 @@ router.post('/unblock', authenticateToken, async (req, res) => {
     const query = `
       UPDATE submissions 
       SET malpractice = FALSE, tab_switches = 0
-      WHERE student_id = ? AND exercise_id = ?
+      WHERE student_id = $1 AND exercise_id = $2
     `;
 
-    await db.execute(query, [studentId, exerciseId]);
+    await pool.query(query, [studentId, exerciseId]);
 
     res.json({ success: true, message: 'Student unblocked successfully' });
   } catch (error) {

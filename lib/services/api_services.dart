@@ -935,16 +935,44 @@ Future<List<Map<String, dynamic>>> getCompletedExercises() async {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return data['isBlocked'] ?? false;
+        return data['blocked'] ?? false;
       } else if (response.statusCode == 401) {
         throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied.');
       } else {
-        print('Error checking malpractice status: ${response.statusCode}');
-        return false;
+        return false; // Default to not blocked if there's an error
       }
     } catch (e) {
       print('Error checking malpractice status: $e');
-      return false;
+      return false; // Default to not blocked if there's an error
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getMalpracticeHistory(int exerciseId) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/malpractice/history/$exerciseId'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        }
+        return [];
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        throw Exception('Failed to load malpractice history: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching malpractice history: $e');
+      rethrow;
     }
   }
 
@@ -1030,6 +1058,34 @@ Future<List<Map<String, dynamic>>> getCompletedExercises() async {
     } catch (e) {
       print('Error unblocking student: $e');
       return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> trackTabSwitch(int exerciseId) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.post(
+        Uri.parse('$url/malpractice/tab-switch'),
+        headers: authService.authHeaders,
+        body: json.encode({
+          'exerciseId': exerciseId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print('Tab switch tracked: ${data['tabSwitches']} switches, malpractice: ${data['malpractice']}');
+        return data;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied.');
+      } else {
+        throw Exception('Failed to track tab switch: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error tracking tab switch: $e');
+      rethrow;
     }
   }
 

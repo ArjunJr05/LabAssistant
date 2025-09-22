@@ -418,58 +418,66 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        automaticallyImplyLeading: false,
-        elevation: 0,
-        backgroundColor: const Color(0xFF1E40AF),
-        foregroundColor: Colors.white,
-        title: const Text(
-          'Admin Dashboard',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: _isRefreshing 
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
-                  )
-                : const Icon(Icons.refresh_rounded),
-            onPressed: _isRefreshing ? null : _handleRefresh,
-            tooltip: 'Refresh Data',
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            margin: const EdgeInsets.only(right: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.admin_panel_settings_rounded, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  'Admin: ${authService.user?.name ?? 'Administrator'}',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+  automaticallyImplyLeading: false,
+  elevation: 0,
+  backgroundColor: const Color(0xFF1E40AF),
+  foregroundColor: Colors.white,
+  
+  title: Row(
+    children: [
+      IconButton(
+        icon: _isRefreshing 
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
                 ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Admin Logout (Stops Server)',
-            onPressed: _handleAdminLogout,
+              )
+            : const Icon(Icons.refresh_rounded),
+        onPressed: _isRefreshing ? null : _handleRefresh,
+        tooltip: 'Refresh Data',
+      ),
+      const SizedBox(width: 8),
+      const Text(
+        'Admin Dashboard',
+        style: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ],
+  ),
+  
+  actions: [
+    Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.admin_panel_settings_rounded, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            'Admin: ${authService.user?.name ?? 'Administrator'}',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           ),
         ],
       ),
+    ),
+    IconButton(
+      icon: const Icon(Icons.logout_rounded),
+      tooltip: 'Admin Logout (Stops Server)',
+      onPressed: _handleAdminLogout,
+    ),
+  ],
+),
+
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(

@@ -84,6 +84,42 @@ router.post('/subjects', auth, adminOnly, async (req, res) => {
   }
 });
 
+// Delete subject
+router.delete('/subjects/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const subjectId = parseInt(req.params.id);
+    
+    if (!subjectId || isNaN(subjectId)) {
+      return res.status(400).json({ message: 'Valid subject ID is required' });
+    }
+    
+    // Check if subject exists
+    const subjectCheck = await pool.query('SELECT * FROM subjects WHERE id = $1', [subjectId]);
+    if (subjectCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Subject not found' });
+    }
+    
+    // Check if subject has exercises
+    const exerciseCheck = await pool.query('SELECT COUNT(*) FROM exercises WHERE subject_id = $1', [subjectId]);
+    const exerciseCount = parseInt(exerciseCheck.rows[0].count);
+    
+    console.log(`Deleting subject ${subjectId} with ${exerciseCount} exercises`);
+    
+    // Delete the subject (CASCADE will handle exercises and submissions)
+    const result = await pool.query('DELETE FROM subjects WHERE id = $1 RETURNING *', [subjectId]);
+    
+    console.log('Subject deleted successfully:', result.rows[0]);
+    res.json({ 
+      message: 'Subject deleted successfully', 
+      deletedSubject: result.rows[0],
+      exercisesDeleted: exerciseCount
+    });
+  } catch (error) {
+    console.error('Error deleting subject:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Enhanced create exercise with visible/hidden test case separation
 router.post('/exercises', auth, adminOnly, async (req, res) => {
   try {

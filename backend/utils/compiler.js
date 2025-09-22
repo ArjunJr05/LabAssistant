@@ -1,4 +1,4 @@
-// utils/compiler.js - Debug version with better error detection
+// utils/compiler.js - Simple version with fixed MinGW path
 const { spawn, exec } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
@@ -7,7 +7,7 @@ const { promisify } = require('util');
 
 const execAsync = promisify(exec);
 
-// Path to MinGW GCC compiler
+// Fixed MinGW path as requested
 const MINGW_PATH = 'C:\\Users\\user\\LabAssistant\\MinGW\\bin\\gcc.exe';
 
 async function executeCode(code, testCases) {
@@ -21,75 +21,50 @@ async function executeCode(code, testCases) {
   const executablePath = path.join(tempDir, execName);
 
   try {
-    console.log('=== DEBUGGING COMPILATION ENVIRONMENT ===');
+    console.log('=== USING MINGW COMPILER ===');
+    console.log('MinGW path:', MINGW_PATH);
     
-    // 1. Check if MinGW exists
-    console.log('Checking MinGW path:', MINGW_PATH);
+    // Check if MinGW exists
     const mingwExists = await fs.pathExists(MINGW_PATH);
     console.log('MinGW exists:', mingwExists);
-    
     if (!mingwExists) {
-      // Try alternative paths
-      const alternativePaths = [
-        'C:\\mingw64\\bin\\gcc.exe',
-        'C:\\MinGW\\bin\\gcc.exe',
-        // 'C:\\msys64\\mingw64\\bin\\gcc.exe',
-        // 'C:\\Program Files\\mingw64\\bin\\gcc.exe'
-      ];
-      
-      for (const altPath of alternativePaths) {
-        if (await fs.pathExists(altPath)) {
-          console.log('Found GCC at alternative path:', altPath);
-          break;
-        }
-      }
-      
-      throw new Error(`GCC compiler not found at ${MINGW_PATH}. Please install MinGW-w64 or update the path.`);
+      throw new Error(`GCC compiler not found at ${MINGW_PATH}. Please ensure MinGW is installed at this location.`);
     }
 
-    // 2. Test GCC version
+    // Test GCC version
     try {
       const { stdout } = await execAsync(`"${MINGW_PATH}" --version`);
-      console.log('GCC version check successful:', stdout.split('\n')[0]);
+      console.log('GCC version test successful:', stdout.split('\n')[0]);
     } catch (versionError) {
-      console.error('GCC version check failed:', versionError.message);
-      throw new Error('GCC is installed but not working correctly. Check your MinGW installation.');
+      console.error('GCC version test failed:', versionError.message);
+      throw new Error(`GCC is installed but not working correctly: ${versionError.message}`);
     }
 
-    // 3. Validate and log the code
     console.log('=== CODE VALIDATION ===');
     console.log('Code length:', code.length);
-    console.log('Code content:');
-    console.log('---START---');
-    console.log(code);
-    console.log('---END---');
+    console.log('Code content preview:', code.substring(0, 200) + (code.length > 200 ? '...' : ''));
     
     // Basic code validation
     if (!code.includes('main')) {
       throw new Error('Code must contain a main function');
     }
-    
-    if (!code.includes('#include')) {
-      console.warn('Warning: Code does not include any header files');
-    }
 
-    // 4. Write code to file with better error handling
+    // Write code to file
     try {
       await fs.writeFile(filePath, code, 'utf8');
       console.log('Code written to file:', filePath);
       
-      // Verify file was written
-      const writtenContent = await fs.readFile(filePath, 'utf8');
-      if (writtenContent !== code) {
-        throw new Error('File content mismatch after writing');
-      }
+      // Verify file exists and has content
+      const fileExists = await fs.pathExists(filePath);
+      const fileStats = await fs.stat(filePath);
+      console.log('File created successfully:', fileExists, 'Size:', fileStats.size, 'bytes');
     } catch (writeError) {
       throw new Error(`Failed to write code to file: ${writeError.message}`);
     }
 
-    // 5. Compile with detailed logging
+    // Compile
     console.log('=== COMPILATION ===');
-    const compilationResult = await compileCodeDetailed(filePath, executablePath);
+    const compilationResult = await compileCode(filePath, executablePath);
     
     if (!compilationResult.success) {
       return {
@@ -99,22 +74,10 @@ async function executeCode(code, testCases) {
       };
     }
 
-    // 6. Verify executable
+    // Verify executable was created
     const execExists = await fs.pathExists(executablePath);
-    console.log('Executable created:', execExists);
-    
     if (!execExists) {
       throw new Error('Compilation reported success but executable was not created');
-    }
-
-    // 7. Test executable with a simple run
-    try {
-      console.log('Testing executable...');
-      const testRun = await runExecutableWithInput(executablePath, '', 2000); // 2 second timeout for test
-      console.log('Test run successful, output length:', testRun.length);
-    } catch (testError) {
-      console.error('Test run failed:', testError.message);
-      // Continue anyway, might be input-dependent
     }
 
     console.log('=== RUNNING TEST CASES ===');
@@ -134,20 +97,17 @@ async function executeCode(code, testCases) {
         const executionTime = Date.now() - startTime;
         
         console.log('Actual output:', JSON.stringify(output));
-        console.log('Execution time:', executionTime, 'ms');
         
         const passed = output.trim() === testCase.expected_output.trim();
         console.log('Test passed:', passed);
 
-        const result = {
+        results.push({
           input: testCase.input || '',
           expected: testCase.expected_output,
           actual: output.trim(),
           passed: passed,
           execution_time: executionTime
-        };
-
-        results.push(result);
+        });
       } catch (error) {
         console.error(`Test case ${i + 1} failed:`, error.message);
         results.push({
@@ -171,9 +131,7 @@ async function executeCode(code, testCases) {
 
   } catch (error) {
     console.error('=== EXECUTION ERROR ===');
-    console.error('Error type:', error.constructor.name);
-    console.error('Error message:', error.message);
-    console.error('Stack trace:', error.stack);
+    console.error('Error:', error.message);
     
     return {
       compilationSuccess: false,
@@ -181,14 +139,14 @@ async function executeCode(code, testCases) {
       results: []
     };
   } finally {
-    // Cleanup
+    // Cleanup files
     await cleanupFiles(filePath, executablePath);
   }
 }
 
-function compileCodeDetailed(filePath, executablePath) {
+function compileCode(filePath, executablePath) {
   return new Promise((resolve) => {
-    console.log('Starting detailed compilation...');
+    console.log('Starting compilation...');
     console.log('Command: gcc', [filePath, '-o', executablePath, '-std=c99', '-Wall']);
     
     const gcc = spawn(MINGW_PATH, [
@@ -196,13 +154,10 @@ function compileCodeDetailed(filePath, executablePath) {
       '-o', 
       executablePath,
       '-std=c99',
-      '-Wall',
-      '-Wextra',
-      '-v' // Verbose output for debugging
+      '-Wall'
     ], {
       cwd: path.dirname(filePath),
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, PATH: path.dirname(MINGW_PATH) + ';' + process.env.PATH }
+      stdio: ['pipe', 'pipe', 'pipe']
     });
 
     let stdout = '';
@@ -222,18 +177,32 @@ function compileCodeDetailed(filePath, executablePath) {
 
     gcc.on('close', (code) => {
       console.log('GCC process closed with code:', code);
-      console.log('Final stdout length:', stdout.length);
-      console.log('Final stderr length:', stderr.length);
+      console.log('Full stdout:', stdout);
+      console.log('Full stderr:', stderr);
 
       if (code !== 0) {
         let errorMessage = 'Compilation failed';
         
         if (stderr) {
-          errorMessage = parseCompilationError(stderr);
-        } else if (stdout) {
-          errorMessage = `Compilation failed with output: ${stdout}`;
-        } else {
-          errorMessage = `Compilation failed with exit code ${code} but no error output`;
+          // Try to extract meaningful error messages
+          const lines = stderr.split('\n');
+          const errorLines = lines.filter(line => 
+            line.includes('error:') || 
+            line.includes('fatal error:') ||
+            line.includes('undefined reference') ||
+            line.includes('ld returned')
+          );
+          
+          if (errorLines.length > 0) {
+            errorMessage = errorLines.join('\n');
+          } else {
+            errorMessage = stderr.trim();
+          }
+        }
+        
+        // If still generic, add more context
+        if (errorMessage === 'Compilation failed' || !errorMessage) {
+          errorMessage = `Compilation failed with exit code ${code}. Full output: ${stderr || stdout || 'No output'}`;
         }
         
         resolve({
@@ -249,15 +218,16 @@ function compileCodeDetailed(filePath, executablePath) {
     });
 
     gcc.on('error', (error) => {
-      console.error('GCC process error:', error);
+      console.error('GCC spawn error:', error);
       resolve({
         success: false,
-        error: `Failed to start GCC: ${error.message}`
+        error: `Failed to start GCC: ${error.message}. Check if MinGW is installed at ${MINGW_PATH}`
       });
     });
 
-    // Set a timeout for compilation
+    // Compilation timeout
     setTimeout(() => {
+      console.log('Compilation timeout reached');
       gcc.kill();
       resolve({
         success: false,
@@ -267,31 +237,8 @@ function compileCodeDetailed(filePath, executablePath) {
   });
 }
 
-function parseCompilationError(stderr) {
-  console.log('Parsing compilation error from stderr:', stderr);
-  
-  // Remove verbose output and focus on actual errors
-  const lines = stderr.split('\n');
-  const errorLines = lines.filter(line => 
-    line.includes('error:') || 
-    line.includes('fatal error:') ||
-    (line.includes('warning:') && line.includes('error'))
-  );
-  
-  if (errorLines.length > 0) {
-    return errorLines.join('\n');
-  }
-  
-  // If no specific errors found, return cleaned stderr
-  return stderr.replace(/^#.*$/gm, '').trim() || 'Unknown compilation error';
-}
-
 function runExecutableWithInput(executablePath, input, timeout = 5000) {
   return new Promise((resolve, reject) => {
-    console.log(`Running executable: ${executablePath}`);
-    console.log(`Input: ${JSON.stringify(input)}`);
-    console.log(`Timeout: ${timeout}ms`);
-
     const child = spawn(executablePath, [], {
       cwd: path.dirname(executablePath),
       stdio: ['pipe', 'pipe', 'pipe']
@@ -322,13 +269,6 @@ function runExecutableWithInput(executablePath, input, timeout = 5000) {
       finished = true;
       clearTimeout(timer);
       
-      console.log(`Program finished with exit code: ${code}`);
-      console.log(`Output length: ${stdout.length}`);
-      
-      if (stderr) {
-        console.log(`Error output: ${stderr}`);
-      }
-      
       if (code !== 0) {
         reject(new Error(`Program exited with code ${code}${stderr ? ': ' + stderr : ''}`));
       } else {
@@ -340,11 +280,10 @@ function runExecutableWithInput(executablePath, input, timeout = 5000) {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
-      console.error('Child process error:', error);
       reject(new Error(`Failed to run program: ${error.message}`));
     });
 
-    // Send input
+    // Send input to program
     try {
       if (input && input.trim()) {
         child.stdin.write(input);
@@ -368,7 +307,7 @@ async function cleanupFiles(filePath, executablePath) {
         console.log('Cleaned up:', path.basename(file));
       }
     } catch (e) {
-      console.error('Cleanup error for', file, ':', e.message);
+      console.error('Cleanup error:', e.message);
     }
   }
 }

@@ -1,227 +1,192 @@
 const express = require('express');
-const { Pool } = require('pg');
-const jwt = require('jsonwebtoken');
 const router = express.Router();
+const db = require('../config/database');
+const { authenticateToken } = require('../middleware/auth');
 
-// Database connection
-const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'labassistant',
-  password: process.env.DB_PASSWORD || 'password',
-  port: process.env.DB_PORT || 5432,
+// Track tab switch and update malpractice status
+router.post('/tab-switch', authenticateToken, async (req, res) => {
+  try {
+    const { exerciseId } = req.body;
+    const studentId = req.user.id;
+
+    // Get current submission or create one
+    let query = `
+      SELECT id, tab_switches, malpractice 
+      FROM submissions 
+      WHERE student_id = ? AND exercise_id = ? AND activity_type = 'submission'
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `;
+    
+    let [rows] = await db.execute(query, [studentId, exerciseId]);
+    
+    if (rows.length === 0) {
+      // Create initial submission record
+      query = `
+        INSERT INTO submissions (student_id, exercise_id, activity_type, tab_switches, malpractice)
+        VALUES (?, ?, 'submission', 1, FALSE)
+      `;
+      await db.execute(query, [studentId, exerciseId]);
+      
+      res.json({ 
+        success: true, 
+        tabSwitches: 1, 
+        malpractice: false,
+        warning: 'First tab switch detected. You have 2 more chances before being blocked.'
+      });
+    } else {
+      const submission = rows[0];
+      const newTabSwitches = submission.tab_switches + 1;
+      const isMalpractice = newTabSwitches >= 3;
+      
+      // Update submission with new tab switch count and malpractice status
+      query = `
+        UPDATE submissions 
+        SET tab_switches = ?, malpractice = ?
+        WHERE id = ?
+      `;
+      await db.execute(query, [newTabSwitches, isMalpractice, submission.id]);
+      
+      let message = '';
+      if (isMalpractice) {
+        message = 'You have been blocked from this exercise due to excessive tab switching.';
+      } else {
+        const remaining = 3 - newTabSwitches;
+        message = `Tab switch detected. You have ${remaining} more chance${remaining !== 1 ? 's' : ''} before being blocked.`;
+      }
+      
+      res.json({ 
+        success: true, 
+        tabSwitches: newTabSwitches, 
+        malpractice: isMalpractice,
+        warning: message
+      });
+    }
+  } catch (error) {
+    console.error('Error tracking tab switch:', error);
+    res.status(500).json({ error: 'Failed to track tab switch' });
+  }
 });
 
-// Authentication middleware
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
-  }
-
-  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
-    if (err) {
-      return res.status(403).json({ error: 'Invalid or expired token' });
-    }
-    req.user = user;
-    next();
-  });
-};
-
-// Apply authentication middleware to all routes
-router.use(authenticateToken);
-
-// Check if student is blocked from an exercise due to malpractice
-router.get('/check/:exerciseId', async (req, res) => {
+// Check if student is blocked from exercise
+router.get('/check/:exerciseId', authenticateToken, async (req, res) => {
   try {
     const { exerciseId } = req.params;
-    const userId = req.user.id;
+    const studentId = req.user.id;
 
-    console.log(`Checking malpractice status for user ${userId}, exercise ${exerciseId}`);
+    const query = `
+      SELECT malpractice, tab_switches
+      FROM submissions
+      WHERE student_id = ? AND exercise_id = ? AND malpractice = TRUE
+      LIMIT 1
+    `;
 
-    const result = await pool.query(
-      `SELECT COUNT(*) as count, MAX(created_at) as last_incident
-       FROM malpractice_logs 
-       WHERE user_id = $1 AND exercise_id = $2 AND is_blocked = true`,
-      [userId, exerciseId]
-    );
+    const [rows] = await db.execute(query, [studentId, exerciseId]);
+    const isBlocked = rows.length > 0;
 
-    const isBlocked = parseInt(result.rows[0].count) > 0;
-    
-    console.log(`Malpractice check result: isBlocked=${isBlocked}`);
-
-    res.json({
-      isBlocked,
-      lastIncident: result.rows[0].last_incident
+    res.json({ 
+      blocked: isBlocked, 
+      tabSwitches: rows.length > 0 ? rows[0].tab_switches : 0 
     });
   } catch (error) {
     console.error('Error checking malpractice status:', error);
-    res.status(500).json({ 
-      error: 'Failed to check malpractice status',
-      message: error.message 
-    });
+    res.status(500).json({ error: 'Failed to check malpractice status' });
   }
 });
 
-// Log a malpractice incident
-router.post('/log', async (req, res) => {
+// Get malpractice history for admin (specific exercise)
+router.get('/history/:exerciseId', authenticateToken, async (req, res) => {
   try {
-    const { exerciseId, type, description, count } = req.body;
-    const userId = req.user.id;
-
-    console.log(`Logging malpractice for user ${userId}, exercise ${exerciseId}:`, {
-      type,
-      description,
-      count
-    });
-
-    // Determine if this should block the user (3 or more violations)
-    const isBlocked = count >= 3;
-
-    const result = await pool.query(
-      `INSERT INTO malpractice_logs 
-       (user_id, exercise_id, type, description, violation_count, is_blocked, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       RETURNING id`,
-      [userId, exerciseId, type, description, count, isBlocked]
-    );
-
-    console.log(`Malpractice logged with ID: ${result.rows[0].id}, blocked: ${isBlocked}`);
-
-    res.status(201).json({
-      success: true,
-      malpracticeId: result.rows[0].id,
-      isBlocked
-    });
-  } catch (error) {
-    console.error('Error logging malpractice:', error);
-    res.status(500).json({ 
-      error: 'Failed to log malpractice',
-      message: error.message 
-    });
-  }
-});
-
-// Admin: Get all malpractice incidents
-router.get('/incidents', async (req, res) => {
-  try {
-    // Check if user is admin
     if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
+      return res.status(403).json({ error: 'Admin access required' });
     }
 
-    console.log('Admin fetching all malpractice incidents');
+    const { exerciseId } = req.params;
 
-    const result = await pool.query(
-      `SELECT 
-         ml.id,
-         ml.user_id,
-         u.name as student_name,
-         u.email as student_email,
-         ml.exercise_id,
-         e.title as exercise_title,
-         s.name as subject_name,
-         ml.type,
-         ml.description,
-         ml.violation_count,
-         ml.is_blocked,
-         ml.created_at
-       FROM malpractice_logs ml
-       JOIN users u ON ml.user_id = u.id
-       JOIN exercises e ON ml.exercise_id = e.id
-       JOIN subjects s ON e.subject_id = s.id
-       ORDER BY ml.created_at DESC`
-    );
+    const query = `
+      SELECT 
+        s.id,
+        s.student_id,
+        s.tab_switches,
+        s.malpractice,
+        s.created_at,
+        s.updated_at,
+        u.name as student_name,
+        u.enroll_number,
+        e.title as exercise_title
+      FROM submissions s
+      JOIN users u ON s.student_id = u.id
+      JOIN exercises e ON s.exercise_id = e.id
+      WHERE s.exercise_id = ? AND s.malpractice = TRUE
+      ORDER BY s.updated_at DESC
+    `;
 
-    console.log(`Found ${result.rows.length} malpractice incidents`);
+    const [rows] = await db.execute(query, [exerciseId]);
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching malpractice history:', error);
+    res.status(500).json({ error: 'Failed to fetch malpractice history' });
+  }
+});
 
-    res.json(result.rows);
+// Get all malpractice incidents (admin only)
+router.get('/incidents', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const query = `
+      SELECT 
+        s.id,
+        s.student_id,
+        s.exercise_id,
+        s.tab_switches,
+        s.malpractice,
+        s.created_at,
+        s.updated_at,
+        u.name as student_name,
+        u.enroll_number,
+        e.title as exercise_title,
+        sub.name as subject_name
+      FROM submissions s
+      JOIN users u ON s.student_id = u.id
+      JOIN exercises e ON s.exercise_id = e.id
+      JOIN subjects sub ON e.subject_id = sub.id
+      WHERE s.malpractice = TRUE
+      ORDER BY s.updated_at DESC
+      LIMIT 100
+    `;
+
+    const [rows] = await db.execute(query);
+    res.json(rows);
   } catch (error) {
     console.error('Error fetching malpractice incidents:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch malpractice incidents',
-      message: error.message 
-    });
+    res.status(500).json({ error: 'Failed to fetch malpractice incidents' });
   }
 });
 
-// Admin: Get malpractice incidents for a specific student
-router.get('/student/:studentId', async (req, res) => {
+// Unblock student (admin only)
+router.post('/unblock', authenticateToken, async (req, res) => {
   try {
-    // Check if user is admin
     if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
-    }
-
-    const { studentId } = req.params;
-
-    console.log(`Admin fetching malpractice incidents for student ${studentId}`);
-
-    const result = await pool.query(
-      `SELECT 
-         ml.id,
-         ml.exercise_id,
-         e.title as exercise_title,
-         s.name as subject_name,
-         ml.type,
-         ml.description,
-         ml.violation_count,
-         ml.is_blocked,
-         ml.created_at
-       FROM malpractice_logs ml
-       JOIN exercises e ON ml.exercise_id = e.id
-       JOIN subjects s ON e.subject_id = s.id
-       WHERE ml.user_id = $1
-       ORDER BY ml.created_at DESC`,
-      [studentId]
-    );
-
-    console.log(`Found ${result.rows.length} malpractice incidents for student ${studentId}`);
-
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Error fetching student malpractice incidents:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch student malpractice incidents',
-      message: error.message 
-    });
-  }
-});
-
-// Admin: Unblock a student from an exercise
-router.post('/unblock', async (req, res) => {
-  try {
-    // Check if user is admin
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
+      return res.status(403).json({ error: 'Admin access required' });
     }
 
     const { studentId, exerciseId } = req.body;
 
-    console.log(`Admin unblocking student ${studentId} from exercise ${exerciseId}`);
+    const query = `
+      UPDATE submissions 
+      SET malpractice = FALSE, tab_switches = 0
+      WHERE student_id = ? AND exercise_id = ?
+    `;
 
-    // Update all malpractice logs for this student/exercise to unblocked
-    const result = await pool.query(
-      `UPDATE malpractice_logs 
-       SET is_blocked = false, updated_at = NOW()
-       WHERE user_id = $1 AND exercise_id = $2`,
-      [studentId, exerciseId]
-    );
+    await db.execute(query, [studentId, exerciseId]);
 
-    console.log(`Unblocked ${result.rowCount} malpractice records`);
-
-    res.json({
-      success: true,
-      unblocked: result.rowCount
-    });
+    res.json({ success: true, message: 'Student unblocked successfully' });
   } catch (error) {
     console.error('Error unblocking student:', error);
-    res.status(500).json({ 
-      error: 'Failed to unblock student',
-      message: error.message 
-    });
+    res.status(500).json({ error: 'Failed to unblock student' });
   }
 });
 

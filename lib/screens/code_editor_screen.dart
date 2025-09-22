@@ -213,7 +213,7 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     }
   }
 
-  void _handleTabSwitch() {
+  void _handleTabSwitch() async {
     if (_isExerciseBlocked || _showingMalpracticeWarning) return;
     
     final now = DateTime.now();
@@ -225,18 +225,41 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     }
     
     _lastTabSwitchTime = now;
-    _tabSwitchCount++;
     
-    print('🚨 Tab switch detected! Count: $_tabSwitchCount');
+    print('🚨 Tab switch detected!');
     
-    if (_tabSwitchCount >= 3) {
-      _handleMalpractice();
-    } else {
-      _showTabSwitchWarning();
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final apiService = ApiService(authService);
+      
+      // Call the new tab-switch API
+      final response = await apiService.trackTabSwitch(widget.exercise.id);
+      
+      _tabSwitchCount = response['tabSwitches'] ?? 0;
+      final isMalpractice = response['malpractice'] ?? false;
+      final warning = response['warning'] ?? '';
+      
+      if (isMalpractice) {
+        setState(() {
+          _isExerciseBlocked = true;
+        });
+        _showMalpracticeBlockedDialog();
+      } else {
+        _showTabSwitchWarning(warning);
+      }
+    } catch (e) {
+      print('Error tracking tab switch: $e');
+      // Fallback to local tracking if API fails
+      _tabSwitchCount++;
+      if (_tabSwitchCount >= 3) {
+        _handleMalpractice();
+      } else {
+        _showTabSwitchWarning('Tab switch detected. You have ${3 - _tabSwitchCount} more chances.');
+      }
     }
   }
 
-  void _showTabSwitchWarning() {
+  void _showTabSwitchWarning([String? customMessage]) {
     if (_showingMalpracticeWarning) return;
     
     setState(() {
@@ -244,6 +267,7 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     });
     
     final remainingChances = 3 - _tabSwitchCount;
+    final message = customMessage ?? 'Tab switch detected. You have $remainingChances more chance${remainingChances != 1 ? 's' : ''} before being blocked.';
     
     showDialog(
       context: context,
@@ -289,7 +313,7 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'You have switched tabs or left the code editor window. This is considered potential malpractice during the exercise.',
+                    message,
                     style: TextStyle(
                       fontSize: 14,
                       color: textPrimaryColor,

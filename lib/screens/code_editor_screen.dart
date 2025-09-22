@@ -115,12 +115,12 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
   }
 
   void _initializeCodeEditor() {
-    // Simple initialization with just the comment
-    _codeController.text = '// Write your code here';
+    // Initialize with empty text so user starts typing at line 1
+    _codeController.text = '';
     
-    // Set cursor to end of the comment
+    // Set cursor to beginning (line 1, position 0)
     _codeController.selection = TextSelection.fromPosition(
-      TextPosition(offset: _codeController.text.length),
+      TextPosition(offset: 0),
     );
     
     _updateOutput('Ready to compile and run your C code...\n');

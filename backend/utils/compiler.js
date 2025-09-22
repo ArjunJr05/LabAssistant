@@ -8,7 +8,7 @@ const { promisify } = require('util');
 const execAsync = promisify(exec);
 
 // Path to MinGW GCC compiler
-const MINGW_PATH = 'C:\\minGW\\bin\\gcc.exe';
+const MINGW_PATH = 'C:\\Users\\user\\LabAssistant\\MinGW\\bin\\gcc.exe';
 
 async function executeCode(code, testCases) {
   const tempDir = os.tmpdir();
@@ -31,9 +31,9 @@ async function executeCode(code, testCases) {
     if (!mingwExists) {
       // Try alternative paths
       const alternativePaths = [
-        'C:\\mingw64\\bin\\gcc.exe',
-        'C:\\MinGW\\bin\\gcc.exe',
-        'C:\\msys64\\mingw64\\bin\\gcc.exe',
+        // 'C:\\mingw64\\bin\\gcc.exe',
+        // 'C:\\MinGW\\bin\\gcc.exe',
+        // 'C:\\msys64\\mingw64\\bin\\gcc.exe',
         // 'C:\\Program Files\\mingw64\\bin\\gcc.exe'
       ];
       

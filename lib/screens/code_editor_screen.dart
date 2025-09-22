@@ -51,7 +51,7 @@ class CodeEditorScreen extends StatefulWidget {
   State<CodeEditorScreen> createState() => _CodeEditorScreenState();
 }
 
-class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProviderStateMixin {
+class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   final TextEditingController _codeController = TextEditingController();
   final ScrollController _outputScrollController = ScrollController();
   final FocusNode _codeFocusNode = FocusNode();
@@ -68,6 +68,12 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
   String outputText = '';
   bool hasCompilationError = false;
   String statusMessage = 'Ready';
+
+  // Malpractice Detection Variables
+  int _tabSwitchCount = 0;
+  bool _isExerciseBlocked = false;
+  bool _showingMalpracticeWarning = false;
+  DateTime? _lastTabSwitchTime;
 
   // Animation controllers
   late AnimationController _fadeController;
@@ -105,8 +111,11 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
       vsync: this,
     );
     
+    // Add lifecycle observer for tab switching detection
+    WidgetsBinding.instance.addObserver(this);
+    
     _initializeCodeEditor();
-   
+    _checkForMalpracticeStatus();
     _checkForPreviousSubmission();
     
     // Start animations
@@ -163,6 +172,7 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     _codeController.dispose();
     _outputScrollController.dispose();
@@ -171,6 +181,393 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     _slideController.dispose();
     _stopwatch.stop();
     super.dispose();
+  }
+
+  // Tab switching detection
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _handleTabSwitch();
+    }
+  }
+
+  Future<void> _checkForMalpracticeStatus() async {
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final apiService = ApiService(authService);
+      
+      // Check if this exercise is blocked due to malpractice
+      final isBlocked = await apiService.checkMalpracticeStatus(widget.exercise.id);
+      
+      if (isBlocked) {
+        setState(() {
+          _isExerciseBlocked = true;
+        });
+        
+        _showMalpracticeBlockedDialog();
+      }
+    } catch (e) {
+      print('Error checking malpractice status: $e');
+    }
+  }
+
+  void _handleTabSwitch() {
+    if (_isExerciseBlocked || _showingMalpracticeWarning) return;
+    
+    final now = DateTime.now();
+    
+    // Prevent rapid fire detection (minimum 2 seconds between detections)
+    if (_lastTabSwitchTime != null && 
+        now.difference(_lastTabSwitchTime!).inSeconds < 2) {
+      return;
+    }
+    
+    _lastTabSwitchTime = now;
+    _tabSwitchCount++;
+    
+    print('🚨 Tab switch detected! Count: $_tabSwitchCount');
+    
+    if (_tabSwitchCount >= 3) {
+      _handleMalpractice();
+    } else {
+      _showTabSwitchWarning();
+    }
+  }
+
+  void _showTabSwitchWarning() {
+    if (_showingMalpracticeWarning) return;
+    
+    setState(() {
+      _showingMalpracticeWarning = true;
+    });
+    
+    final remainingChances = 3 - _tabSwitchCount;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: warningColor, size: 28),
+            const SizedBox(width: 12),
+            const Text(
+              'Tab Switch Warning',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: warningColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: warningColor.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Malpractice Detection Alert',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: warningColor,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'You have switched tabs or left the code editor window. This is considered potential malpractice during the exercise.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: textPrimaryColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: errorColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: errorColor, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Warning ${_tabSwitchCount}/3 - $remainingChances chance(s) remaining',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: errorColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              '⚠️ If you switch tabs one more time, you will be:\n'
+              '• Immediately removed from this exercise\n'
+              '• Marked for malpractice in the system\n'
+              '• Permanently blocked from this exercise\n'
+              '• Reported to the administrator',
+              style: TextStyle(
+                fontSize: 13,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              setState(() {
+                _showingMalpracticeWarning = false;
+              });
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('I Understand - Continue'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleMalpractice() async {
+    setState(() {
+      _isExerciseBlocked = true;
+      _showingMalpracticeWarning = true;
+    });
+    
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final apiService = ApiService(authService);
+      
+      // Log malpractice to database
+      await apiService.logMalpractice(
+        widget.exercise.id,
+        'tab_switching',
+        'Student switched tabs 3 times during exercise completion',
+        _tabSwitchCount,
+      );
+      
+      print('🚨 Malpractice logged for exercise ${widget.exercise.id}');
+      
+    } catch (e) {
+      print('Error logging malpractice: $e');
+    }
+    
+    _showMalpracticeDialog();
+  }
+
+  void _showMalpracticeDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.block, color: errorColor, size: 28),
+            const SizedBox(width: 12),
+            const Text(
+              'Malpractice Detected',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFFDC2626),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: errorColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: errorColor.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Exercise Access Revoked',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: errorColor,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'You have been caught switching tabs 3 times during this exercise. This constitutes malpractice according to our academic integrity policy.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '🚫 Consequences:\n'
+              '• You are permanently blocked from this exercise\n'
+              '• This incident has been logged and reported\n'
+              '• Administrator has been notified\n'
+              '• This may affect your academic standing',
+              style: TextStyle(
+                fontSize: 13,
+                color: Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'If you believe this is an error, please contact your instructor immediately.',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pop(); // Exit code editor
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: errorColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Exit Exercise'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMalpracticeBlockedDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.block, color: errorColor, size: 28),
+            const SizedBox(width: 12),
+            const Text(
+              'Exercise Blocked',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFFDC2626),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: errorColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: errorColor.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Access Denied',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: errorColor,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'This exercise has been blocked for you due to previous malpractice incidents.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'You cannot access this exercise because:\n'
+              '• Malpractice was detected in a previous attempt\n'
+              '• Your access has been permanently revoked\n'
+              '• Contact your instructor for more information',
+              style: TextStyle(
+                fontSize: 13,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pop(); // Exit code editor
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: errorColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Go Back'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _updateOutput(String message) {

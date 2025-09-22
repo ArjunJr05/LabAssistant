@@ -629,24 +629,54 @@ Future<List<Map<String, dynamic>>> getCompletedExercises() async {
     try {
       print('Creating exercise with data: $exerciseData');
       
-      // Ensure all values are properly serializable
+      // Create a clean copy of the data with proper serialization
       final cleanedData = <String, dynamic>{};
       exerciseData.forEach((key, value) {
-        if (value is List) {
+        if (value == null) {
+          cleanedData[key] = null;
+        } else if (value is List) {
+          // Handle lists (like test_cases and hidden_test_cases)
           cleanedData[key] = value.map((item) {
-            if (item is Map) {
+            if (item is Map<String, dynamic>) {
+              // Already a proper map, use as-is
+              return item;
+            } else if (item is Map) {
+              // Convert to proper map
               return Map<String, dynamic>.from(item);
             }
             return item;
           }).toList();
+        } else if (value is Map<String, dynamic>) {
+          // Already a proper map, use as-is
+          cleanedData[key] = value;
         } else if (value is Map) {
+          // Convert to proper map
           cleanedData[key] = Map<String, dynamic>.from(value);
         } else {
+          // Primitive values
           cleanedData[key] = value;
         }
       });
       
       print('Cleaned exercise data: $cleanedData');
+      
+      // Validate that test cases are properly formatted
+      if (cleanedData['test_cases'] is List) {
+        print('Test cases count: ${(cleanedData['test_cases'] as List).length}');
+        for (int i = 0; i < (cleanedData['test_cases'] as List).length; i++) {
+          final testCase = (cleanedData['test_cases'] as List)[i];
+          print('Test case $i: $testCase (type: ${testCase.runtimeType})');
+        }
+      }
+      
+      if (cleanedData['hidden_test_cases'] is List) {
+        print('Hidden test cases count: ${(cleanedData['hidden_test_cases'] as List).length}');
+        for (int i = 0; i < (cleanedData['hidden_test_cases'] as List).length; i++) {
+          final testCase = (cleanedData['hidden_test_cases'] as List)[i];
+          print('Hidden test case $i: $testCase (type: ${testCase.runtimeType})');
+        }
+      }
+      
       final jsonBody = json.encode(cleanedData);
       print('JSON body to send: $jsonBody');
       
@@ -891,6 +921,115 @@ Future<List<Map<String, dynamic>>> getCompletedExercises() async {
     } catch (e) {
       print('Error fetching student activities: $e');
       rethrow;
+    }
+  }
+
+  // Malpractice detection methods
+  Future<bool> checkMalpracticeStatus(int exerciseId) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/malpractice/check/$exerciseId'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['isBlocked'] ?? false;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        print('Error checking malpractice status: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('Error checking malpractice status: $e');
+      return false;
+    }
+  }
+
+  Future<bool> logMalpractice(int exerciseId, String type, String description, int count) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.post(
+        Uri.parse('$url/malpractice/log'),
+        headers: authService.authHeaders,
+        body: json.encode({
+          'exerciseId': exerciseId,
+          'type': type,
+          'description': description,
+          'count': count,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('Malpractice logged successfully');
+        return true;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        print('Error logging malpractice: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('Error logging malpractice: $e');
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getMalpracticeIncidents() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/malpractice/incidents'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        }
+        return [];
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        throw Exception('Failed to load malpractice incidents: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching malpractice incidents: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> unblockStudent(int studentId, int exerciseId) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.post(
+        Uri.parse('$url/malpractice/unblock'),
+        headers: authService.authHeaders,
+        body: json.encode({
+          'studentId': studentId,
+          'exerciseId': exerciseId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        print('Student unblocked successfully');
+        return true;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        print('Error unblocking student: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('Error unblocking student: $e');
+      return false;
     }
   }
 

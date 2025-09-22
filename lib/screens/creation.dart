@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 
 class CreateExerciseScreen extends StatefulWidget {
   final Subject subject;
-  final Exercise? exercise; // For editing existing exercises
+  final Exercise? exercise; 
 
   const CreateExerciseScreen({super.key, required this.subject, this.exercise});
 
@@ -61,16 +61,28 @@ class _CreateExerciseScreenState extends State<CreateExerciseScreen>
     _constraintsController.text = exercise.constraints ?? '';
     _selectedDifficulty = exercise.difficultyLevel;
     
-    // Populate test cases
-    _allTestCases = [...exercise.testCases];
-    if (exercise.hiddenTestCases != null) {
+    // Clear existing data
+    _allTestCases.clear();
+    _visibleTestCaseIndices.clear();
+    
+    // Populate visible test cases first
+    _allTestCases.addAll(exercise.testCases);
+    
+    // Mark visible test cases indices
+    for (int i = 0; i < exercise.testCases.length; i++) {
+      _visibleTestCaseIndices.add(i);
+    }
+    
+    // Add hidden test cases after visible ones
+    if (exercise.hiddenTestCases != null && exercise.hiddenTestCases!.isNotEmpty) {
       _allTestCases.addAll(exercise.hiddenTestCases!);
     }
     
-    // Mark first 3 as visible (assuming they were the original visible ones)
-    for (int i = 0; i < exercise.testCases.length && i < 3; i++) {
-      _visibleTestCaseIndices.add(i);
-    }
+    print('📝 Editing exercise: ${exercise.title}');
+    print('📊 Loaded ${exercise.testCases.length} visible test cases');
+    print('🔒 Loaded ${exercise.hiddenTestCases?.length ?? 0} hidden test cases');
+    print('📋 Total test cases: ${_allTestCases.length}');
+    print('👁️ Visible indices: $_visibleTestCaseIndices');
   }
 
   @override
@@ -1327,13 +1339,20 @@ class _CreateExerciseScreenState extends State<CreateExerciseScreen>
       List<TestCase> visibleTestCases = [];
       List<TestCase> hiddenTestCases = [];
       
+      print('🔍 Processing ${_allTestCases.length} test cases');
+      print('👁️ Visible indices: $_visibleTestCaseIndices');
+      
       for (int i = 0; i < _allTestCases.length; i++) {
         if (_visibleTestCaseIndices.contains(i)) {
           visibleTestCases.add(_allTestCases[i]);
+          print('✅ Test case $i marked as VISIBLE: ${_allTestCases[i].input} -> ${_allTestCases[i].expectedOutput}');
         } else {
           hiddenTestCases.add(_allTestCases[i]);
+          print('🔒 Test case $i marked as HIDDEN: ${_allTestCases[i].input} -> ${_allTestCases[i].expectedOutput}');
         }
       }
+
+      print('📊 Final counts - Visible: ${visibleTestCases.length}, Hidden: ${hiddenTestCases.length}');
 
       final exerciseData = {
         'subject_id': widget.subject.id,
@@ -1347,7 +1366,10 @@ class _CreateExerciseScreenState extends State<CreateExerciseScreen>
         'hidden_test_cases': hiddenTestCases.map((tc) => tc.toJson()).toList(),
       };
 
-      print('Creating exercise with data: $exerciseData');
+      print('💾 ${widget.exercise != null ? "Updating" : "Creating"} exercise with data:');
+      print('   - Title: ${exerciseData['title']}');
+      print('   - Visible test cases: ${(exerciseData['test_cases'] as List).length}');
+      print('   - Hidden test cases: ${(exerciseData['hidden_test_cases'] as List).length}');
 
       bool success;
       if (widget.exercise != null) {

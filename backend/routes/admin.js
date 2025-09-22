@@ -212,18 +212,66 @@ router.post('/exercises', auth, adminOnly, async (req, res) => {
     }
     
     // Normalize test cases to ensure proper structure
-    const normalizedTestCases = test_cases.map(tc => ({
-      input: tc.input ? tc.input.toString() : '',
-      expected_output: tc.expected_output ? tc.expected_output.toString() : (tc.expectedOutput ? tc.expectedOutput.toString() : '')
-    }));
+    const normalizedTestCases = test_cases.map((tc, index) => {
+      console.log(`Processing test case ${index}:`, tc);
+      console.log(`Test case type: ${typeof tc}, is object: ${typeof tc === 'object'}`);
+      
+      if (typeof tc !== 'object' || tc === null) {
+        throw new Error(`Test case ${index} is not a valid object`);
+      }
+      
+      const normalized = {
+        input: tc.input ? String(tc.input) : '',
+        expected_output: tc.expected_output ? String(tc.expected_output) : (tc.expectedOutput ? String(tc.expectedOutput) : '')
+      };
+      
+      console.log(`Normalized test case ${index}:`, normalized);
+      return normalized;
+    });
 
-    const normalizedHiddenTestCases = (hidden_test_cases || []).map(tc => ({
-      input: tc.input ? tc.input.toString() : '',
-      expected_output: tc.expected_output ? tc.expected_output.toString() : (tc.expectedOutput ? tc.expectedOutput.toString() : '')
-    }));
+    const normalizedHiddenTestCases = (hidden_test_cases || []).map((tc, index) => {
+      console.log(`Processing hidden test case ${index}:`, tc);
+      console.log(`Hidden test case type: ${typeof tc}, is object: ${typeof tc === 'object'}`);
+      
+      if (typeof tc !== 'object' || tc === null) {
+        throw new Error(`Hidden test case ${index} is not a valid object`);
+      }
+      
+      const normalized = {
+        input: tc.input ? String(tc.input) : '',
+        expected_output: tc.expected_output ? String(tc.expected_output) : (tc.expectedOutput ? String(tc.expectedOutput) : '')
+      };
+      
+      console.log(`Normalized hidden test case ${index}:`, normalized);
+      return normalized;
+    });
 
-    console.log('Normalized test_cases:', normalizedTestCases);
-    console.log('Normalized hidden_test_cases:', normalizedHiddenTestCases);
+    console.log('Final normalized test_cases:', JSON.stringify(normalizedTestCases, null, 2));
+    console.log('Final normalized hidden_test_cases:', JSON.stringify(normalizedHiddenTestCases, null, 2));
+
+    // Try to stringify test cases before database insertion to catch any issues
+    let testCasesJson, hiddenTestCasesJson;
+    try {
+      testCasesJson = JSON.stringify(normalizedTestCases);
+      console.log('Successfully stringified test cases:', testCasesJson);
+    } catch (error) {
+      console.error('❌ Error stringifying test cases:', error);
+      return res.status(400).json({ 
+        message: 'Error processing test cases',
+        error: `Failed to serialize test cases: ${error.message}`
+      });
+    }
+    
+    try {
+      hiddenTestCasesJson = JSON.stringify(normalizedHiddenTestCases);
+      console.log('Successfully stringified hidden test cases:', hiddenTestCasesJson);
+    } catch (error) {
+      console.error('❌ Error stringifying hidden test cases:', error);
+      return res.status(400).json({ 
+        message: 'Error processing hidden test cases',
+        error: `Failed to serialize hidden test cases: ${error.message}`
+      });
+    }
 
     const result = await pool.query(`
       INSERT INTO exercises (
@@ -238,8 +286,8 @@ router.post('/exercises', auth, adminOnly, async (req, res) => {
       input_format || null,
       output_format || null,
       constraints || null,
-      JSON.stringify(normalizedTestCases),
-      JSON.stringify(normalizedHiddenTestCases),
+      testCasesJson,
+      hiddenTestCasesJson,
       difficulty_level || 'medium'
     ]);
     
@@ -248,17 +296,51 @@ router.post('/exercises', auth, adminOnly, async (req, res) => {
     console.log('Exercise created successfully:');
     console.log('- ID:', createdExercise.id);
     console.log('- Title:', createdExercise.title);
-    console.log('- Visible test cases stored:', JSON.parse(createdExercise.test_cases).length);
-    console.log('- Hidden test cases stored:', JSON.parse(createdExercise.hidden_test_cases).length);
     
-    res.status(201).json({
-      ...createdExercise,
+    // Safely parse test cases with error handling
+    let visibleTestCasesCount = 0;
+    let hiddenTestCasesCount = 0;
+    
+    try {
+      const testCases = typeof createdExercise.test_cases === 'string' 
+        ? JSON.parse(createdExercise.test_cases) 
+        : createdExercise.test_cases;
+      visibleTestCasesCount = Array.isArray(testCases) ? testCases.length : 0;
+      console.log('- Visible test cases stored:', visibleTestCasesCount);
+    } catch (error) {
+      console.error('Error parsing visible test cases:', error);
+    }
+    
+    try {
+      const hiddenTestCases = typeof createdExercise.hidden_test_cases === 'string' 
+        ? JSON.parse(createdExercise.hidden_test_cases) 
+        : createdExercise.hidden_test_cases;
+      hiddenTestCasesCount = Array.isArray(hiddenTestCases) ? hiddenTestCases.length : 0;
+      console.log('- Hidden test cases stored:', hiddenTestCasesCount);
+    } catch (error) {
+      console.error('Error parsing hidden test cases:', error);
+    }
+    
+    // Create a clean response object without potential circular references
+    const responseData = {
+      id: createdExercise.id,
+      subject_id: createdExercise.subject_id,
+      title: createdExercise.title,
+      description: createdExercise.description,
+      input_format: createdExercise.input_format,
+      output_format: createdExercise.output_format,
+      constraints: createdExercise.constraints,
+      difficulty_level: createdExercise.difficulty_level,
+      created_at: createdExercise.created_at,
+      updated_at: createdExercise.updated_at,
       summary: {
-        visibleTestCases: JSON.parse(createdExercise.test_cases).length,
-        hiddenTestCases: JSON.parse(createdExercise.hidden_test_cases).length,
-        totalTestCases: JSON.parse(createdExercise.test_cases).length + JSON.parse(createdExercise.hidden_test_cases).length
+        visibleTestCases: visibleTestCasesCount,
+        hiddenTestCases: hiddenTestCasesCount,
+        totalTestCases: visibleTestCasesCount + hiddenTestCasesCount
       }
-    });
+    };
+    
+    res.status(201).json(responseData);
   } catch (error) {
     console.error('Error creating exercise:', error);
     res.status(500).json({ message: 'Server error', error: error.message });

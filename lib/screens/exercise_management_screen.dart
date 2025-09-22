@@ -688,206 +688,267 @@ class _ExerciseManagementScreenState extends State<ExerciseManagementScreen>
                                 ),
                               ),
                               
-                              // Exercises Grid
-                              Expanded(
-                                child: exercises.isEmpty
-                                    ? Center(
-                                        child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(24),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFF64748B).withOpacity(0.1),
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: const Icon(
-                                                Icons.assignment_outlined,
-                                                size: 48,
-                                                color: Color(0xFF64748B),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 16),
-                                            const Text(
-                                              'No exercises available',
-                                              style: TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.w600,
-                                                color: Color(0xFF1E293B),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            const Text(
-                                              'Create your first exercise to get started',
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                color: Color(0xFF64748B),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 24),
-                                            ElevatedButton.icon(
-                                              onPressed: _showCreateExerciseDialog,
-                                              icon: const Icon(Icons.add_rounded),
-                                              label: const Text('Create Exercise'),
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: const Color(0xFF3B82F6),
-                                                foregroundColor: Colors.white,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(12),
-                                                ),
-                                                padding: const EdgeInsets.symmetric(
-                                                  horizontal: 24,
-                                                  vertical: 16,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      )
-                                    : GridView.builder(
-                                        padding: const EdgeInsets.all(24),
-                                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                          crossAxisCount: 4,
-                                          crossAxisSpacing: 16,
-                                          mainAxisSpacing: 16,
-                                          childAspectRatio: 1.4,
-                                        ),
-                                        itemCount: exercises.length,
-                                        itemBuilder: (context, index) {
-                                          final exercise = exercises[index];
-                                          
-                                          return Container(
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(12),
-                                              border: Border.all(
-                                                color: const Color(0xFFE2E8F0),
-                                                width: 1,
-                                              ),
-                                              boxShadow: const [
-                                                BoxShadow(
-                                                  color: Color(0x08000000),
-                                                  offset: Offset(0, 2),
-                                                  blurRadius: 8,
-                                                ),
-                                              ],
-                                            ),
-                                            child: Padding(
-                                              padding: const EdgeInsets.all(16),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(
-                                                    children: [
-                                                      Container(
-                                                        padding: const EdgeInsets.all(6),
-                                                        decoration: BoxDecoration(
-                                                          color: _getDifficultyColor(exercise.difficultyLevel).withOpacity(0.1),
-                                                          borderRadius: BorderRadius.circular(6),
-                                                        ),
-                                                        child: Icon(
-                                                          Icons.code_rounded,
-                                                          color: _getDifficultyColor(exercise.difficultyLevel),
-                                                          size: 14,
-                                                        ),
-                                                      ),
-                                                      const Spacer(),
-                                                      Container(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                        decoration: BoxDecoration(
-                                                          color: _getDifficultyColor(exercise.difficultyLevel).withOpacity(0.1),
-                                                          borderRadius: BorderRadius.circular(8),
-                                                        ),
-                                                        child: Text(
-                                                          exercise.difficultyLevel.toUpperCase(),
-                                                          style: TextStyle(
-                                                            fontSize: 9,
-                                                            fontWeight: FontWeight.bold,
-                                                            color: _getDifficultyColor(exercise.difficultyLevel),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  const SizedBox(height: 12),
-                                                  Text(
-                                                    exercise.title,
-                                                    style: const TextStyle(
-                                                      fontSize: 14,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: Color(0xFF1E293B),
-                                                    ),
-                                                    maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
-                                                  ),
-                                                  const SizedBox(height: 6),
-                                                  Expanded(
-                                                    child: Text(
-                                                      exercise.description,
-                                                      style: const TextStyle(
-                                                        fontSize: 12,
-                                                        color: Color(0xFF64748B),
-                                                      ),
-                                                      maxLines: 2,
-                                                      overflow: TextOverflow.ellipsis,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 12),
-                                                  Row(
-                                                    children: [
-                                                      Expanded(
-                                                        child: Material(
-                                                          color: const Color(0xFF3B82F6).withOpacity(0.1),
-                                                          borderRadius: BorderRadius.circular(6),
-                                                          child: InkWell(
-                                                            borderRadius: BorderRadius.circular(6),
-                                                            onTap: () => _editExercise(exercise),
-                                                            child: Container(
-                                                              padding: const EdgeInsets.all(8),
-                                                              child: const Icon(
-                                                                Icons.edit_rounded,
-                                                                color: Color(0xFF3B82F6),
-                                                                size: 16,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      Expanded(
-                                                        child: Material(
-                                                          color: const Color(0xFFDC2626).withOpacity(0.1),
-                                                          borderRadius: BorderRadius.circular(6),
-                                                          child: InkWell(
-                                                            borderRadius: BorderRadius.circular(6),
-                                                            onTap: () => _deleteExercise(exercise),
-                                                            child: Container(
-                                                              padding: const EdgeInsets.all(8),
-                                                              child: const Icon(
-                                                                Icons.delete_rounded,
-                                                                color: Color(0xFFDC2626),
-                                                                size: 16,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
+                              // Replace your current GridView.builder with this ListView.builder
+Expanded(
+  child: exercises.isEmpty
+      ? Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF64748B).withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.assignment_outlined,
+                  size: 48,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'No exercises available',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Create your first exercise to get started',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _showCreateExerciseDialog,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Create Exercise'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF3B82F6),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        )
+      : ListView.builder(
+          padding: const EdgeInsets.all(24),
+          itemCount: exercises.length,
+          itemBuilder: (context, index) {
+            final exercise = exercises[index];
+            
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+              margin: const EdgeInsets.only(bottom: 16),
+              child: Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(
+                    color: Color(0xFFE2E8F0),
+                    width: 1,
+                  ),
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    color: Colors.white,
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(20),
+                    leading: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [
+                            _getDifficultyColor(exercise.difficultyLevel).withOpacity(0.2),
+                            _getDifficultyColor(exercise.difficultyLevel).withOpacity(0.1),
+                          ],
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.code_rounded,
+                        color: _getDifficultyColor(exercise.difficultyLevel),
+                        size: 24,
+                      ),
+                    ),
+                    title: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            exercise.title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12, 
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _getDifficultyColor(exercise.difficultyLevel).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _getDifficultyIcon(exercise.difficultyLevel),
+                                size: 14,
+                                color: _getDifficultyColor(exercise.difficultyLevel),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                exercise.difficultyLevel.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: _getDifficultyColor(exercise.difficultyLevel),
+                                  letterSpacing: 0.5,
+                                ),
                               ),
                             ],
                           ),
+                        ),
+                      ],
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 8),
+                        Text(
+                          exercise.description,
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 14,
+                            height: 1.4,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            const Spacer(),
+                            // Edit Button
+                            Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF3B82F6).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(8),
+                                  onTap: () => _editExercise(exercise),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.edit_rounded,
+                                          color: Color(0xFF3B82F6),
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        const Text(
+                                          'Edit',
+                                          style: TextStyle(
+                                            color: Color(0xFF3B82F6),
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Delete Button
+                            Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDC2626).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(8),
+                                  onTap: () => _deleteExercise(exercise),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.delete_rounded,
+                                          color: Color(0xFFDC2626),
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        const Text(
+                                          'Delete',
+                                          style: TextStyle(
+                                            color: Color(0xFFDC2626),
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ],
-            ),
-          ),
-    );
+              ),
+            );
+          },
+        ),
+),]))])));
+  }
+
+// Add these helper methods to your _ExerciseManagementScreenState class if they don't exist
+  IconData _getDifficultyIcon(String difficulty) {
+    switch (difficulty.toLowerCase()) {
+      case 'easy':
+        return Icons.trending_down_rounded;
+      case 'medium':
+        return Icons.trending_flat_rounded;
+      case 'hard':
+        return Icons.trending_up_rounded;
+      default:
+        return Icons.help_outline_rounded;
+    }
   }
 
   Color _getDifficultyColor(String difficulty) {

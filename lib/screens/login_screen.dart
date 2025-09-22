@@ -926,70 +926,43 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   
   
   Future<void> _startScreenCaptureAndNavigateToStudent() async {
-    try {
-      // Start the screen capture agent
-      print('Starting screen capture agent...');
-      
-      final agentPath = path.join(
-        Directory.current.path,
-        'screen_capture_agent',
-        'dist',
-        'ScreenCaptureAgent.exe'
+  try {
+    // Start the screen capture agent
+    print('Starting screen capture agent...');
+    
+    // Use the exact path you specified
+    const agentPath = r'C:\Users\arjun\LabAssistant\screen_capture_agent\dist\ScreenCaptureAgent.exe';
+    
+    if (await File(agentPath).exists()) {
+      // Start the screen capture agent in the background
+      await Process.start(
+        agentPath,
+        [], // No additional arguments needed
+        mode: ProcessStartMode.detached,
       );
       
-      if (await File(agentPath).exists()) {
-        // Start the screen capture agent as administrator in the background
-        await Process.start(
-          'powershell',
-          [
-            '-Command',
-            'Start-Process',
-            '"$agentPath"',
-            '-Verb',
-            'RunAs',
-            '-WindowStyle',
-            'Hidden'
-          ],
-          mode: ProcessStartMode.detached,
-        );
+      print('Screen capture agent started successfully');
+      
+      if (mounted) {
+        _showSuccess('Screen capture started! Navigating to student dashboard...');
         
-        print('Screen capture agent started successfully');
+        // Small delay to ensure the process starts
+        await Future.delayed(const Duration(seconds: 1));
         
+        // Navigate to student dashboard
         if (mounted) {
-          _showSuccess('Screen capture started! Navigating to student dashboard...');
-          
-          // Navigate to student dashboard
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const StudentDashboard()),
-              );
-            }
-          });
-        }
-      } else {
-        print('Screen capture agent not found at: $agentPath');
-        if (mounted) {
-          _showError('Screen capture agent not found. Please build the agent first.');
-          
-          // Still navigate to student dashboard
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const StudentDashboard()),
-              );
-            }
-          });
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const StudentDashboard()),
+          );
         }
       }
-    } catch (e) {
-      print('Error starting screen capture agent: $e');
+    } else {
+      print('Screen capture agent not found at: $agentPath');
       if (mounted) {
-        _showError('Failed to start screen capture: $e');
+        _showError('Screen capture agent not found at the specified location.');
         
-        // Still navigate to student dashboard even if screen capture fails
+        // Still navigate to student dashboard
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
             Navigator.pushReplacement(
@@ -1000,7 +973,23 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         });
       }
     }
+  } catch (e) {
+    print('Error starting screen capture agent: $e');
+    if (mounted) {
+      _showError('Failed to start screen capture: $e');
+      
+      // Still navigate to student dashboard even if screen capture fails
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const StudentDashboard()),
+          );
+        }
+      });
+    }
   }
+}
   
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(

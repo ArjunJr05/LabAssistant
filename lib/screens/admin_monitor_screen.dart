@@ -23,8 +23,10 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
   Map<String, dynamic> studentActivity = {};
   List<Map<String, dynamic>> studentExercises = [];
   List<Map<String, dynamic>> studentActivities = [];
+  List<Map<String, dynamic>> malpracticeIncidents = [];
   bool isLoadingExercises = false;
   bool isLoadingActivities = false;
+  bool isLoadingMalpractice = false;
   Map<String, bool> expandedActivities = {};
   Map<String, bool> expandedExercises = {};
   
@@ -410,6 +412,7 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
                                     });
                                     _loadStudentExercises(user.id);
                                     _loadStudentActivities(user.id);
+                                    _loadMalpracticeIncidents();
                                     _connectToStudentScreen(user);
                                   },
                                 ),
@@ -568,6 +571,38 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
     } finally {
       setState(() {
         isLoadingActivities = false;
+      });
+    }
+  }
+
+  Future<void> _loadMalpracticeIncidents() async {
+    setState(() {
+      isLoadingMalpractice = true;
+    });
+    
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final apiService = ApiService(authService);
+      
+      final incidents = await apiService.getMalpracticeIncidents();
+      setState(() {
+        malpracticeIncidents = incidents;
+      });
+    } catch (e) {
+      print('Error loading malpractice incidents: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading malpractice incidents: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        isLoadingMalpractice = false;
       });
     }
   }
@@ -858,7 +893,7 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
         // Exercise list, activity feed, and screen monitoring
         Expanded(
           child: DefaultTabController(
-            length: 3,
+            length: 4,
             child: Column(
               children: [
                 Container(
@@ -957,6 +992,32 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
                           ],
                         ),
                       ),
+                      Tab(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.security_rounded, size: 20),
+                            const SizedBox(width: 8),
+                            const Text('Malpractice'),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDC2626).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                malpracticeIncidents.length.toString(),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFDC2626),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -966,6 +1027,7 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
                       _buildExercisesList(),
                       _buildLiveActivityFeed(),
                       const ScreenMonitorWidget(),
+                      _buildMalpracticeIncidents(),
                     ],
                   ),
                 ),
@@ -2346,5 +2408,381 @@ class _AdminMonitorScreenState extends State<AdminMonitorScreen> with TickerProv
     }
     
     return const SizedBox.shrink();
+  }
+
+  Widget _buildMalpracticeIncidents() {
+    if (isLoadingMalpractice) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Color(0xFFDC2626)),
+            SizedBox(height: 16),
+            Text(
+              'Loading malpractice incidents...',
+              style: TextStyle(
+                fontSize: 16,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (malpracticeIncidents.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(50),
+              ),
+              child: const Icon(
+                Icons.verified_user_rounded,
+                size: 48,
+                color: Color(0xFF10B981),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No malpractice incidents',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'All students are following proper conduct',
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadMalpracticeIncidents,
+      color: const Color(0xFFDC2626),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(20),
+        itemCount: malpracticeIncidents.length,
+        itemBuilder: (context, index) {
+          final incident = malpracticeIncidents[index];
+          final isBlocked = incident['is_blocked'] == true;
+          final violationCount = incident['violation_count'] ?? 1;
+          final createdAt = DateTime.tryParse(incident['created_at'] ?? '');
+          
+          return Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isBlocked ? const Color(0xFFDC2626) : const Color(0xFFF59E0B),
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: (isBlocked ? const Color(0xFFDC2626) : const Color(0xFFF59E0B)).withOpacity(0.1),
+                  offset: const Offset(0, 4),
+                  blurRadius: 12,
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header with severity indicator
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isBlocked ? const Color(0xFFDC2626) : const Color(0xFFF59E0B),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          isBlocked ? Icons.block_rounded : Icons.warning_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isBlocked ? 'STUDENT BLOCKED' : 'MALPRACTICE WARNING',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: isBlocked ? const Color(0xFFDC2626) : const Color(0xFFF59E0B),
+                              ),
+                            ),
+                            Text(
+                              incident['student_name'] ?? 'Unknown Student',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E293B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isBlocked 
+                            ? const Color(0xFFDC2626).withOpacity(0.1)
+                            : const Color(0xFFF59E0B).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'Violation #$violationCount',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: isBlocked ? const Color(0xFFDC2626) : const Color(0xFFF59E0B),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Student and exercise info
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.person_rounded, size: 16, color: Color(0xFF64748B)),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Student: ${incident['student_email'] ?? 'N/A'}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.assignment_rounded, size: 16, color: Color(0xFF64748B)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Exercise: ${incident['exercise_title'] ?? 'Unknown Exercise'}',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.book_rounded, size: 16, color: Color(0xFF64748B)),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Subject: ${incident['subject_name'] ?? 'Unknown Subject'}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Incident details
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFFECACA)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDC2626),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                incident['type']?.toUpperCase() ?? 'UNKNOWN',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            if (createdAt != null)
+                              Text(
+                                _formatDateTimeAgo(createdAt),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          incident['description'] ?? 'No description available',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF374151),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  if (isBlocked) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDC2626).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFDC2626)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.block_rounded, color: Color(0xFFDC2626), size: 20),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              'Student is blocked from this exercise',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFDC2626),
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => _showUnblockDialog(incident),
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFFDC2626),
+                            ),
+                            child: const Text('Unblock'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showUnblockDialog(Map<String, dynamic> incident) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Unblock Student'),
+        content: Text(
+          'Are you sure you want to unblock ${incident['student_name']} from the exercise "${incident['exercise_title']}"?\n\nThis will allow the student to access the exercise again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await _unblockStudent(incident['user_id'], incident['exercise_id']);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+            ),
+            child: const Text('Unblock'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _unblockStudent(int studentId, int exerciseId) async {
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final apiService = ApiService(authService);
+      
+      final response = await apiService.unblockStudent(studentId, exerciseId);
+      
+      if (response) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Student unblocked successfully'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+        _loadMalpracticeIncidents(); // Refresh the list
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error unblocking student: $e'),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+    }
+  }
+
+  String _formatDateTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+    
+    if (difference.inDays > 0) {
+      return '${difference.inDays}d ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m ago';
+    } else {
+      return 'Just now';
+    }
   }
 }

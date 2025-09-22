@@ -397,6 +397,7 @@ class _ExerciseManagementScreenState extends State<ExerciseManagementScreen>
     ).then((_) => _loadExercises(selectedSubject!.id));
   }
 
+
   void _showDeleteSubjectDialog() {
     if (subjects.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

@@ -10,6 +10,7 @@ const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const studentRoutes = require('./routes/student');
 const exerciseRoutes = require('./routes/exercises');
+const malpracticeRoutes = require('./routes/malpractice');
 
 const app = express();
 const server = http.createServer(app);
@@ -63,6 +64,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/exercises', exerciseRoutes);
+app.use('/api/malpractice', malpracticeRoutes);
 
 // Health check endpoint with /api prefix
 app.get('/api/health', (req, res) => {
@@ -87,6 +89,7 @@ app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
 app.use('/student', studentRoutes);
 app.use('/exercises', exerciseRoutes);
+app.use('/malpractice', malpracticeRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ 
@@ -626,6 +629,20 @@ async function initDatabase() {
       )
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS malpractice_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        description TEXT NOT NULL,
+        violation_count INTEGER NOT NULL DEFAULT 1,
+        is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
     // Add columns if they don't exist
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT false`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
@@ -651,15 +668,6 @@ async function initDatabase() {
       console.log('✅ Default admin created');
     }
 
-    // Insert default subject if doesn't exist
-    const subjectCheck = await pool.query("SELECT * FROM subjects WHERE code = 'CS101'");
-    if (subjectCheck.rows.length === 0) {
-      await pool.query(
-        "INSERT INTO subjects (name, code) VALUES ($1, $2)",
-        ['C Programming', 'CS101']
-      );
-      console.log('✅ Default subject created');
-    }
 
   } catch (error) {
     console.error('❌ Database initialization error:', error.message);

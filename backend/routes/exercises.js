@@ -28,6 +28,10 @@ router.get('/subject/:subjectId', auth, async (req, res) => {
       return res.status(400).json({ message: 'Invalid subject ID' });
     }
 
+    // Check if user is admin - if so, include hidden test cases
+    const includeHidden = req.user.role === 'admin';
+    console.log(`User role: ${req.user.role}, Include hidden: ${includeHidden}`);
+
     const result = await pool.query(
       `SELECT 
          id, 
@@ -38,7 +42,7 @@ router.get('/subject/:subjectId', auth, async (req, res) => {
          input_format,
          output_format,
          constraints,
-         test_cases
+         test_cases${includeHidden ? ', hidden_test_cases' : ''}
        FROM exercises 
        WHERE subject_id = $1 
        ORDER BY created_at ASC`,
@@ -48,7 +52,7 @@ router.get('/subject/:subjectId', auth, async (req, res) => {
     console.log(`Found ${result.rows.length} exercises for subject ${subjectId}`);
     
     const exercises = result.rows.map((exercise, index) => {
-      // Handle test_cases (JSONB field - only visible test cases)
+      // Handle test_cases (JSONB field - visible test cases)
       let visibleTestCases = [];
       if (exercise.test_cases) {
         if (Array.isArray(exercise.test_cases)) {
@@ -63,8 +67,28 @@ router.get('/subject/:subjectId', auth, async (req, res) => {
         }
       }
       
+      // Handle hidden_test_cases (JSONB field - hidden test cases) for admin users
+      let hiddenTestCases = [];
+      if (includeHidden && exercise.hidden_test_cases) {
+        if (Array.isArray(exercise.hidden_test_cases)) {
+          hiddenTestCases = exercise.hidden_test_cases;
+        } else if (typeof exercise.hidden_test_cases === 'string') {
+          try {
+            hiddenTestCases = JSON.parse(exercise.hidden_test_cases);
+          } catch (e) {
+            console.error('Error parsing hidden_test_cases string:', e);
+            hiddenTestCases = [];
+          }
+        }
+      }
+      
       // Transform test cases to match Flutter model format
       const formattedTestCases = visibleTestCases.map(tc => ({
+        input: tc.input || '',
+        expectedOutput: tc.expected_output || tc.expectedOutput || ''
+      }));
+
+      const formattedHiddenTestCases = hiddenTestCases.map(tc => ({
         input: tc.input || '',
         expectedOutput: tc.expected_output || tc.expectedOutput || ''
       }));
@@ -78,11 +102,19 @@ router.get('/subject/:subjectId', auth, async (req, res) => {
         inputFormat: exercise.input_format || null,
         outputFormat: exercise.output_format || null,
         constraints: exercise.constraints || null,
-        testCases: formattedTestCases // Only visible test cases
+        testCases: formattedTestCases // Visible test cases
       };
+
+      // Add hidden test cases for admin users
+      if (includeHidden) {
+        exerciseData.hiddenTestCases = formattedHiddenTestCases;
+      }
 
       console.log(`\nExercise ${index + 1}: ${exercise.title}`);
       console.log(`Visible test cases: ${formattedTestCases.length}`);
+      if (includeHidden) {
+        console.log(`Hidden test cases: ${formattedHiddenTestCases.length}`);
+      }
 
       return exerciseData;
     });

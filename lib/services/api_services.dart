@@ -741,6 +741,50 @@ Future<List<Map<String, dynamic>>> getCompletedExercises() async {
     }
   }
 
+  Future<bool> deleteSubject(int subjectId) async {
+    try {
+      print('🗑️ DELETE SUBJECT ATTEMPT');
+      print('Subject ID: $subjectId');
+      final url = await baseUrl;
+      print('URL: $url/admin/subjects/$subjectId');
+      print('Headers: ${authService.authHeaders}');
+      
+      final response = await http.delete(
+        Uri.parse('$url/admin/subjects/$subjectId'),
+        headers: authService.authHeaders,
+      );
+
+      print('🌐 DELETE Subject Response Status: ${response.statusCode}');
+      print('🌐 DELETE Subject Response Headers: ${response.headers}');
+      print('🌐 DELETE Subject Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('✅ Subject deleted successfully');
+        return true;
+      } else if (response.statusCode == 401) {
+        print('❌ Authentication failed');
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        print('❌ Access denied');
+        throw Exception('Access denied. Admin privileges required.');
+      } else if (response.statusCode == 404) {
+        print('❌ Subject not found');
+        throw Exception('Subject not found.');
+      } else {
+        print('❌ Unknown error');
+        try {
+          final errorData = json.decode(response.body);
+          throw Exception('Failed to delete subject: ${errorData['message'] ?? response.body}');
+        } catch (e) {
+          throw Exception('Failed to delete subject: ${response.body}');
+        }
+      }
+    } catch (e) {
+      print('💥 Error deleting subject: $e');
+      rethrow;
+    }
+  }
+
   // Get last submission for an exercise
   Future<Map<String, dynamic>?> getLastSubmission(int exerciseId) async {
     try {

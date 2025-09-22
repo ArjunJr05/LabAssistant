@@ -21,6 +21,7 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
   Subject? selectedSubject;
   bool isLoading = false;
   bool isLoadingExercises = false;
+    bool _isRefreshing = false;
   Set<int> completedExerciseIds = {};
   late AnimationController _fadeController;
   late AnimationController _slideController;
@@ -345,6 +346,35 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
     );
   }
 
+  Future<void> _handleRefresh() async {
+    setState(() => _isRefreshing = true);
+    
+    try {
+      // Refresh subjects list
+      await _loadSubjects();
+      
+      // If a subject is selected, refresh its exercises and completion status
+      if (selectedSubject != null) {
+        await Future.wait([
+          _loadExercises(selectedSubject!.id),
+          _refreshCompletionStatus(),
+        ]);
+      }
+      
+      if (mounted) {
+        _showSuccessSnackBar('Data refreshed successfully');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showErrorSnackBar('Failed to refresh data: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
+  }
+
   // Add this method to your _StudentDashboardState class (or _StudentsScreenState if that's where the error is)
 Future<void> _refreshCompletionStatus() async {
   try {
@@ -393,44 +423,66 @@ Future<void> _refreshCompletionStatus() async {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        automaticallyImplyLeading: false,
-        elevation: 0,
-        backgroundColor: const Color(0xFF1E40AF),
-        foregroundColor: Colors.white,
-        title: const Text(
-          'Student Dashboard',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        actions: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            margin: const EdgeInsets.only(right: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.person_outline, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  'Welcome, ${authService.user?.name ?? 'Student'}',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+  automaticallyImplyLeading: false,
+  elevation: 0,
+  backgroundColor: const Color(0xFF1E40AF),
+  foregroundColor: Colors.white,
+  
+  title: Row(
+    children: [
+      IconButton(
+        icon: _isRefreshing
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
                 ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            onPressed: _handleLogout,
-            tooltip: 'Logout',
+              )
+            : const Icon(Icons.refresh_rounded),
+        onPressed: _isRefreshing ? null : _handleRefresh,
+        tooltip: 'Refresh Data',
+      ),
+      const SizedBox(width: 8),
+      const Text(
+        'Student Dashboard',
+        style: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ],
+  ),
+  
+  actions: [
+    Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.person_outline, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            'Welcome, ${authService.user?.name ?? 'Student'}',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           ),
         ],
       ),
+    ),
+    IconButton(
+      icon: const Icon(Icons.logout_rounded),
+      onPressed: _handleLogout,
+      tooltip: 'Logout',
+    ),
+  ],
+),
+
       body: isLoading
           ? const Center(
               child: CircularProgressIndicator(

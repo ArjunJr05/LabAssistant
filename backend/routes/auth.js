@@ -269,10 +269,27 @@ router.post('/register', async (req, res) => {
       // Hash password
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      // Insert user (always as student)
+      // Get client IP address with enhanced detection
+      const forwardedFor = req.headers['x-forwarded-for'];
+      const realIp = req.headers['x-real-ip'];
+      const clientIp = forwardedFor?.split(',')[0]?.trim() || 
+                      realIp || 
+                      req.ip || 
+                      req.connection?.remoteAddress || 
+                      req.socket?.remoteAddress || 
+                      (req.connection?.socket ? req.connection.socket.remoteAddress : null) ||
+                      'unknown';
+      
+      console.log(`📍 Registration IP Detection Details:`);
+      console.log(`   - x-forwarded-for: ${forwardedFor}`);
+      console.log(`   - x-real-ip: ${realIp}`);
+      console.log(`   - req.ip: ${req.ip}`);
+      console.log(`   - Final IP: ${clientIp}`);
+
+      // Insert user (always as student) with IP address
       const result = await pool.query(
-        'INSERT INTO users (name, enroll_number, year, section, batch, password, role, is_online, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW()) RETURNING id, name, enroll_number, role, year, section, batch, is_online',
-        [name, enrollNumber, year, section, batch, hashedPassword, 'student', true]
+        'INSERT INTO users (name, enroll_number, year, section, batch, password, role, is_online, ip_address, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()) RETURNING id, name, enroll_number, role, year, section, batch, is_online, ip_address',
+        [name, enrollNumber, year, section, batch, hashedPassword, 'student', true, clientIp]
       );
 
       const user = result.rows[0];

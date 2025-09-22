@@ -397,6 +397,171 @@ class _ExerciseManagementScreenState extends State<ExerciseManagementScreen>
     ).then((_) => _loadExercises(selectedSubject!.id));
   }
 
+  void _showDeleteSubjectDialog() {
+    if (subjects.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No subjects available to delete.')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        Subject? subjectToDelete;
+        
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.delete_rounded,
+                      color: Colors.red,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Delete Subject',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Select a subject to delete:',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.maxFinite,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<Subject>(
+                        value: subjectToDelete,
+                        hint: const Text('Choose subject to delete'),
+                        isExpanded: true,
+                        items: subjects.map((Subject subject) {
+                          return DropdownMenuItem<Subject>(
+                            value: subject,
+                            child: Text(
+                              '${subject.name} (${subject.code})',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (Subject? newValue) {
+                          setState(() {
+                            subjectToDelete = newValue;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                  if (subjectToDelete != null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_rounded, color: Colors.red, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'This action cannot be undone. The subject "${subjectToDelete!.name}" and ALL its exercises will be permanently deleted.',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Colors.red,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Color(0xFF64748B)),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: subjectToDelete == null ? null : () async {
+                    try {
+                      final authService = Provider.of<AuthService>(context, listen: false);
+                      final apiService = ApiService(authService);
+                      
+                      final success = await apiService.deleteSubject(subjectToDelete!.id);
+                      
+                      if (success) {
+                        Navigator.pop(context);
+                        
+                        // Clear selected subject if it was the one deleted
+                        if (selectedSubject?.id == subjectToDelete!.id) {
+                          setState(() {
+                            selectedSubject = null;
+                            exercises.clear();
+                          });
+                        }
+                        
+                        // Reload subjects list
+                        _loadSubjects();
+                        _showSuccessSnackBar('Subject "${subjectToDelete!.name}" deleted successfully');
+                      } else {
+                        _showErrorSnackBar('Failed to delete subject');
+                      }
+                    } catch (e) {
+                      _showErrorSnackBar('Error deleting subject: $e');
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Delete Subject'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -487,6 +652,18 @@ class _ExerciseManagementScreenState extends State<ExerciseManagementScreen>
                                   icon: const Icon(Icons.add_rounded, color: Colors.white),
                                   onPressed: _showCreateSubjectDialog,
                                   tooltip: 'Add Subject',
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: IconButton(
+                                  icon: const Icon(Icons.delete_rounded, color: Colors.white),
+                                  onPressed: _showDeleteSubjectDialog,
+                                  tooltip: 'Delete Subject',
                                 ),
                               ),
                             ],

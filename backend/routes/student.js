@@ -243,4 +243,104 @@ router.get('/activities/:exerciseId', auth, async (req, res) => {
   }
 });
 
+// Get malpractice exercises for current user
+router.get('/malpractice-exercises', auth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    console.log(`Fetching malpractice exercises for user ID: ${userId}`);
+    
+    const malpracticeExercises = await pool.query(`
+      SELECT 
+        s.exercise_id,
+        s.tabswitch,
+        s.ismalpractice,
+        s.submitted_at,
+        e.title as exercise_title,
+        sub.name as subject_name,
+        sub.code as subject_code
+      FROM submissions s
+      JOIN exercises e ON s.exercise_id = e.id
+      JOIN subjects sub ON e.subject_id = sub.id
+      WHERE s.user_id = $1 AND s.ismalpractice = true
+      ORDER BY s.submitted_at DESC
+    `, [userId]);
+    
+    console.log(`Found ${malpracticeExercises.rows.length} malpractice exercises for user ${userId}`);
+    
+    // Log each malpractice exercise for debugging
+    malpracticeExercises.rows.forEach(exercise => {
+      console.log(`  - Exercise ID: ${exercise.exercise_id}, Title: ${exercise.exercise_title}, Tab Switches: ${exercise.tabswitch}`);
+    });
+    
+    res.json(malpracticeExercises.rows);
+  } catch (error) {
+    console.error('Error fetching malpractice exercises:', error);
+    res.status(500).json({ 
+      message: 'Server error',
+      error: error.message 
+    });
+  }
+});
+
+// Update tab switch count for a specific exercise session
+router.post('/update-tab-switch', auth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { exerciseId, switchCount } = req.body;
+    
+    console.log(`Updating tab switch count for user ${userId}, exercise ${exerciseId}: ${switchCount}`);
+    
+    if (!exerciseId || switchCount === undefined) {
+      return res.status(400).json({ message: 'Exercise ID and switch count are required' });
+    }
+    
+    // Check if there's an existing submission for this exercise
+    const existingSubmission = await pool.query(`
+      SELECT id FROM submissions 
+      WHERE user_id = $1 AND exercise_id = $2
+      ORDER BY submitted_at DESC
+      LIMIT 1
+    `, [userId, exerciseId]);
+    
+    if (existingSubmission.rows.length > 0) {
+      // Update existing submission
+      const submissionId = existingSubmission.rows[0].id;
+      const isMalpractice = switchCount >= 3;
+      
+      await pool.query(`
+        UPDATE submissions 
+        SET tabswitch = $1, ismalpractice = $2
+        WHERE id = $3
+      `, [switchCount, isMalpractice, submissionId]);
+      
+      console.log(`Updated submission ${submissionId}: tabswitch=${switchCount}, ismalpractice=${isMalpractice}`);
+    } else {
+      // Create a temporary submission record to track tab switches
+      const isMalpractice = switchCount >= 3;
+      
+      await pool.query(`
+        INSERT INTO submissions (user_id, exercise_id, code, status, score, tabswitch, ismalpractice)
+        VALUES ($1, $2, '', 'in_progress', 0, $3, $4)
+      `, [userId, exerciseId, switchCount, isMalpractice]);
+      
+      console.log(`Created new submission record for tracking: tabswitch=${switchCount}, ismalpractice=${isMalpractice}`);
+    }
+    
+    res.json({ 
+      success: true,
+      switchCount,
+      isMalpractice: switchCount >= 3,
+      message: switchCount >= 3 ? 'Malpractice detected' : 'Tab switch recorded'
+    });
+    
+  } catch (error) {
+    console.error('Error updating tab switch count:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error',
+      error: error.message 
+    });
+  }
+});
+
 module.exports = router;

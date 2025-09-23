@@ -929,7 +929,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   try {
     print('Starting screen capture agent...');
     
+
     const agentPath = r'C:\Users\arjun\LabAssistant\screen_capture_agent\dist\ScreenCaptureAgent.exe';
+
     
     if (await File(agentPath).exists()) {
       if (mounted) {

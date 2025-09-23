@@ -132,6 +132,11 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
       }
     });
     
+    // Listen for tab switch events
+    _socketService!.socket?.on('student-tab-switch', (data) {
+      _handleTabSwitchEvent(data);
+    });
+    
     _socketService!.socket?.on('connect', (_) {
       _socketService!.socket?.emit('get-online-users');
       _fetchOnlineUsers();
@@ -165,6 +170,153 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
         _showErrorSnackBar('Failed to load analytics: $e');
       }
     }
+  }
+
+  void _handleTabSwitchEvent(dynamic data) {
+    if (!mounted) return;
+    
+    try {
+      final userId = data['userId'];
+      final userName = data['userName'];
+      final exerciseId = data['exerciseId'];
+      final switchCount = data['switchCount'];
+      final isMalpractice = data['isMalpractice'] ?? false;
+      
+      print('🚨 Tab switch detected: $userName ($userId) - Exercise $exerciseId - Count: $switchCount');
+      
+      // Show notification to admin
+      if (isMalpractice) {
+        _showMalpracticeAlert(userName, userId, exerciseId, switchCount);
+      } else {
+        _showTabSwitchWarning(userName, userId, exerciseId, switchCount);
+      }
+      
+      // Refresh analytics to show updated data
+      _loadAnalytics();
+      
+    } catch (e) {
+      print('Error handling tab switch event: $e');
+    }
+  }
+
+  void _showTabSwitchWarning(String userName, String userId, int exerciseId, int switchCount) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.warning_rounded, color: Colors.orange[300]),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Tab Switch Warning: $userName switched tabs ($switchCount/3)',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.orange[600],
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  void _showMalpracticeAlert(String userName, String userId, int exerciseId, int switchCount) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.block_rounded, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'MALPRACTICE DETECTED: $userName blocked from exercise (3 tab switches)',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFFDC2626),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'View Details',
+          textColor: Colors.white,
+          onPressed: () {
+            // Could navigate to detailed view or show dialog
+            _showMalpracticeDialog(userName, userId, exerciseId, switchCount);
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showMalpracticeDialog(String userName, String userId, int exerciseId, int switchCount) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDC2626).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.block_rounded, color: Color(0xFFDC2626), size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Malpractice Detected',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Student: $userName ($userId)',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Text('Exercise ID: $exerciseId'),
+            const SizedBox(height: 8),
+            Text('Tab Switches: $switchCount'),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDC2626).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFDC2626).withOpacity(0.3)),
+              ),
+              child: const Text(
+                'The student has been automatically blocked from this exercise due to excessive tab switching (3 times). This has been recorded as malpractice.',
+                style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
   
   Future<void> _fetchOnlineUsers() async {

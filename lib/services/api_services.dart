@@ -1105,6 +1105,94 @@ Future<List<Map<String, dynamic>>> getCompletedExercises() async {
     }
   }
 
+  // Get malpractice exercises for current user
+  Future<List<Map<String, dynamic>>> getMalpracticeExercises() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/student/malpractice-exercises'),
+        headers: authService.authHeaders,
+      );
+
+      print('Malpractice exercises response status: ${response.statusCode}');
+      print('Malpractice exercises response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        
+        List<Map<String, dynamic>> malpracticeExercises = [];
+        
+        if (data is List) {
+          // Handle direct array response
+          for (var item in data) {
+            if (item is Map<String, dynamic>) {
+              malpracticeExercises.add(item);
+            }
+          }
+        } else if (data is Map<String, dynamic>) {
+          // Handle wrapped response
+          if (data.containsKey('malpracticeExercises')) {
+            final exercises = data['malpracticeExercises'];
+            if (exercises is List) {
+              for (var item in exercises) {
+                if (item is Map<String, dynamic>) {
+                  malpracticeExercises.add(item);
+                }
+              }
+            }
+          }
+        }
+        
+        print('Processed malpractice exercises: ${malpracticeExercises.length} items');
+        return malpracticeExercises;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        throw Exception('Failed to load malpractice exercises: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching malpractice exercises: $e');
+      if (e.toString().contains('Authentication')) {
+        rethrow;
+      }
+      return [];
+    }
+  }
+
+  // Update tab switch count for malpractice tracking
+  Future<bool> updateTabSwitch(int exerciseId, int switchCount) async {
+    try {
+      print('Updating tab switch count for exercise $exerciseId: $switchCount');
+      
+      final url = await baseUrl;
+      final response = await http.post(
+        Uri.parse('$url/student/update-tab-switch'),
+        headers: authService.authHeaders,
+        body: json.encode({
+          'exerciseId': exerciseId,
+          'switchCount': switchCount,
+        }),
+      );
+
+      print('Update tab switch response status: ${response.statusCode}');
+      print('Update tab switch response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print('✅ Tab switch count updated: ${data['message']}');
+        return data['success'] == true;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception('Failed to update tab switch: ${errorData['message'] ?? response.body}');
+      }
+    } catch (e) {
+      print('Error updating tab switch count: $e');
+      rethrow;
+    }
+  }
+
   // Helper method to retry failed requests
   Future<T> retryRequest<T>(Future<T> Function() request, {int maxRetries = 3}) async {
     int retryCount = 0;

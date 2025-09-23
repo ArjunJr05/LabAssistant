@@ -7,32 +7,39 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../models/test_result_model.dart';
 
-class DarkAppColors {
-  static const Color primaryColor = Color(0xFF26BDCF);
-  static const Color secondaryColor = Color(0xFF1E1E1E);
-  static const Color scaffoldBgLightColor = Color(0xFF121212);
-  static const Color scaffoldWorkOutBgDarkColor = Color(0xFF2D2D2D);
-  static const Color ThemeRedColor = Color(0xFFEE4443);
-  static const Color ThemeGreenColor = Color(0xFF23C45E);
-  static const Color ThemelightGreenColor = Color(0xFFA8CC12);
-  static const Color tipsBgColor = Color(0xFF1A2B2E);
-  static const Color tipsBorderColor = Color(0xFF26BDCF);
-  static const Color titleColor = Color(0xFFE0E0E0);
-  static const Color subTitleColor = Color(0xFF8D8D8D);
-}
 
-class LightAppColors {
-  static const Color primaryColor = Color(0xFF1976D2);
-  static const Color secondaryColor = Color(0xFFFFFFFF);
-  static const Color scaffoldBgLightColor = Color(0xFFF5F5F5);
-  static const Color scaffoldWorkOutBgDarkColor = Color(0xFFE0E0E0);
-  static const Color ThemeRedColor = Color(0xFFE53935);
-  static const Color ThemeGreenColor = Color(0xFF43A047);
-  static const Color ThemelightGreenColor = Color(0xFF7CB342);
-  static const Color tipsBgColor = Color(0xFFE3F2FD);
-  static const Color tipsBorderColor = Color(0xFF1976D2);
-  static const Color titleColor = Color(0xFF212121);
-  static const Color subTitleColor = Color(0xFF757575);
+class ModernAppColors {
+  // Light Theme
+  static const Color lightPrimary = Color(0xFF1E40AF);
+  static const Color lightSecondary = Color(0xFFF8FAFC);
+  static const Color lightScaffoldBg = Color(0xFFF8FAFC);
+  static const Color lightCardBg = Color(0xFFFFFFFF);
+  static const Color lightSurface = Color(0xFFFFFFFF);
+  static const Color lightSuccess = Color(0xFF10B981);
+  static const Color lightWarning = Color(0xFFF59E0B);
+  static const Color lightError = Color(0xFFEF4444);
+  static const Color lightInfo = Color(0xFF3B82F6);
+  static const Color lightTextPrimary = Color(0xFF1E293B);
+  static const Color lightTextSecondary = Color(0xFF64748B);
+  static const Color lightTextTertiary = Color(0xFF94A3B8);
+  static const Color lightBorder = Color(0xFFE2E8F0);
+  static const Color lightDivider = Color(0xFFF1F5F9);
+
+  // Dark Theme
+  static const Color darkPrimary = Color(0xFF3B82F6);
+  static const Color darkSecondary = Color(0xFF1E293B);
+  static const Color darkScaffoldBg = Color(0xFF0F172A);
+  static const Color darkCardBg = Color(0xFF1E293B);
+  static const Color darkSurface = Color(0xFF334155);
+  static const Color darkSuccess = Color(0xFF10B981);
+  static const Color darkWarning = Color(0xFFF59E0B);
+  static const Color darkError = Color(0xFFEF4444);
+  static const Color darkInfo = Color(0xFF60A5FA);
+  static const Color darkTextPrimary = Color(0xFFF8FAFC);
+  static const Color darkTextSecondary = Color(0xFFCBD5E1);
+  static const Color darkTextTertiary = Color(0xFF94A3B8);
+  static const Color darkBorder = Color(0xFF475569);
+  static const Color darkDivider = Color(0xFF334155);
 }
 
 class CodeEditorScreen extends StatefulWidget {
@@ -55,37 +62,56 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
   bool isSubmitting = false;
   bool showResults = false;
   int? score;
-  bool _isDarkMode = true;
-  bool _hasUnsavedChanges = false;
+  bool _isDarkMode = false; 
   late Stopwatch _stopwatch;
   
   String outputText = '';
   bool hasCompilationError = false;
   String statusMessage = 'Ready';
 
+  // Animation controllers
+  late AnimationController _fadeController;
+  late AnimationController _slideController;
+
   // Theme Getters
-  Color get primaryColor => _isDarkMode ? DarkAppColors.primaryColor : LightAppColors.primaryColor;
-  Color get secondaryColor => _isDarkMode ? DarkAppColors.secondaryColor : LightAppColors.secondaryColor;
-  Color get scaffoldBgColor => _isDarkMode ? DarkAppColors.scaffoldBgLightColor : LightAppColors.scaffoldBgLightColor;
-  Color get titleColor => _isDarkMode ? DarkAppColors.titleColor : LightAppColors.titleColor;
-  Color get subTitleColor => _isDarkMode ? DarkAppColors.subTitleColor : LightAppColors.subTitleColor;
-  Color get tipsBgColor => _isDarkMode ? DarkAppColors.tipsBgColor : LightAppColors.tipsBgColor;
-  Color get tipsBorderColor => _isDarkMode ? DarkAppColors.tipsBorderColor : LightAppColors.tipsBorderColor;
-  Color get workoutBgColor => _isDarkMode ? DarkAppColors.scaffoldWorkOutBgDarkColor : LightAppColors.scaffoldWorkOutBgDarkColor;
-  Color get greenColor => _isDarkMode ? DarkAppColors.ThemeGreenColor : LightAppColors.ThemeGreenColor;
-  Color get lightGreenColor => _isDarkMode ? DarkAppColors.ThemelightGreenColor : LightAppColors.ThemelightGreenColor;
-  Color get redColor => _isDarkMode ? DarkAppColors.ThemeRedColor : LightAppColors.ThemeRedColor;
+  Color get primaryColor => _isDarkMode ? ModernAppColors.darkPrimary : ModernAppColors.lightPrimary;
+  Color get secondaryColor => _isDarkMode ? ModernAppColors.darkSecondary : ModernAppColors.lightSecondary;
+  Color get scaffoldBgColor => _isDarkMode ? ModernAppColors.darkScaffoldBg : ModernAppColors.lightScaffoldBg;
+  Color get cardBgColor => _isDarkMode ? ModernAppColors.darkCardBg : ModernAppColors.lightCardBg;
+  Color get surfaceColor => _isDarkMode ? ModernAppColors.darkSurface : ModernAppColors.lightSurface;
+  Color get textPrimaryColor => _isDarkMode ? ModernAppColors.darkTextPrimary : ModernAppColors.lightTextPrimary;
+  Color get textSecondaryColor => _isDarkMode ? ModernAppColors.darkTextSecondary : ModernAppColors.lightTextSecondary;
+  Color get textTertiaryColor => _isDarkMode ? ModernAppColors.darkTextTertiary : ModernAppColors.lightTextTertiary;
+  Color get borderColor => _isDarkMode ? ModernAppColors.darkBorder : ModernAppColors.lightBorder;
+  Color get dividerColor => _isDarkMode ? ModernAppColors.darkDivider : ModernAppColors.lightDivider;
+  Color get successColor => _isDarkMode ? ModernAppColors.darkSuccess : ModernAppColors.lightSuccess;
+  Color get warningColor => _isDarkMode ? ModernAppColors.darkWarning : ModernAppColors.lightWarning;
+  Color get errorColor => _isDarkMode ? ModernAppColors.darkError : ModernAppColors.lightError;
+  Color get infoColor => _isDarkMode ? ModernAppColors.darkInfo : ModernAppColors.lightInfo;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _stopwatch = Stopwatch()..start();
+    
+    // Initialize animation controllers
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    
     _initializeCodeEditor();
-    _codeController.addListener(() {
-      if (!_hasUnsavedChanges) setState(() => _hasUnsavedChanges = true);
-    });
+   
     _checkForPreviousSubmission();
+    
+    // Start animations
+    _fadeController.forward();
+    _slideController.forward();
   }
 
   void _initializeCodeEditor() {
@@ -141,6 +167,8 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     _codeController.dispose();
     _outputScrollController.dispose();
     _codeFocusNode.dispose();
+    _fadeController.dispose();
+    _slideController.dispose();
     _stopwatch.stop();
     super.dispose();
   }
@@ -264,12 +292,7 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
       _updateOutput('$e\n');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: redColor,
-          ),
-        );
+        _showErrorSnackBar('Error: $e');
       }
     } finally {
       setState(() => isRunning = false);
@@ -280,71 +303,7 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     _clearOutput();
     
     // Show confirmation dialog for final submission
-    final bool? confirmSubmit = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: _isDarkMode ? DarkAppColors.secondaryColor : Colors.white,
-          title: Text('Final Submission', style: TextStyle(color: titleColor)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Are you ready to submit your solution?',
-                style: TextStyle(color: titleColor),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '⚠️ Important:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.orange[700],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '• Your code will be tested against ALL test cases (visible + hidden)\n'
-                      '• You can see results for visible test cases only\n'
-                      '• Hidden test case results won\'t be shown\n'
-                      '• This submission will be recorded',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.orange[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: greenColor,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Submit'),
-            ),
-          ],
-        );
-      },
-    );
+    final bool? confirmSubmit = await _showSubmissionDialog();
 
     if (confirmSubmit != true) return;
     
@@ -460,7 +419,6 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
         );
       }
 
-      setState(() => _hasUnsavedChanges = false);
 
     } catch (e) {
       setState(() {
@@ -474,12 +432,7 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
       _updateOutput('Please try again or contact support if the issue persists.\n');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Submission Error: $e'),
-            backgroundColor: redColor,
-          ),
-        );
+        _showErrorSnackBar('Submission Error: $e');
       }
     } finally {
       setState(() => isSubmitting = false);
@@ -494,67 +447,213 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
 
   void _toggleTheme() => setState(() => _isDarkMode = !_isDarkMode);
 
+  Future<bool?> _showSubmissionDialog() {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: cardBgColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.send_rounded, color: primaryColor, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Text('Final Submission', style: TextStyle(color: textPrimaryColor)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Are you ready to submit your solution?',
+                style: TextStyle(color: textPrimaryColor),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: warningColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: warningColor.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.warning_rounded, color: warningColor, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Important:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: warningColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '• Your code will be tested against ALL test cases (visible + hidden)\n'
+                      '• You can see results for visible test cases only\n'
+                      '• Hidden test case results won\'t be shown\n'
+                      '• This submission will be recorded',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: textSecondaryColor,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('Cancel', style: TextStyle(color: textSecondaryColor)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: successColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                elevation: 0,
+              ),
+              child: const Text('Submit'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showSuccessDialog(int finalScore, int timeTaken) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        backgroundColor: _isDarkMode ? DarkAppColors.secondaryColor : Colors.white,
+        backgroundColor: cardBgColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(Icons.celebration, color: greenColor, size: 28),
-            const SizedBox(width: 8),
-            Text('Perfect Score!', style: TextStyle(color: titleColor)),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: successColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.celebration_rounded, color: successColor, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Text('Perfect Score!', style: TextStyle(color: textPrimaryColor)),
           ],
         ),
         content: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: greenColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: greenColor.withOpacity(0.3)),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                successColor.withOpacity(0.1),
+                successColor.withOpacity(0.05),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: successColor.withOpacity(0.2)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: successColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.emoji_events_rounded, color: successColor, size: 32),
+              ),
+              const SizedBox(height: 16),
               Text(
-                '🎉 Congratulations!',
+                'Congratulations!',
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: greenColor,
+                  color: textPrimaryColor,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
                 'You have successfully completed:\n"${widget.exercise.title}"',
-                style: TextStyle(color: titleColor),
+                style: TextStyle(color: textSecondaryColor),
                 textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cardBgColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: borderColor),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Column(
+                      children: [
+                        Text('Score', style: TextStyle(color: textTertiaryColor, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Text('$finalScore%', style: TextStyle(color: successColor, fontSize: 24, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    Container(width: 1, height: 40, color: borderColor),
+                    Column(
+                      children: [
+                        Text('Time', style: TextStyle(color: textTertiaryColor, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Text(_formatTime(timeTaken), style: TextStyle(color: textPrimaryColor, fontSize: 18, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  Column(
-                    children: [
-                      Text('Score', style: TextStyle(color: subTitleColor, fontSize: 12)),
-                      Text('$finalScore%', style: TextStyle(color: greenColor, fontSize: 20, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  Column(
-                    children: [
-                      Text('Time', style: TextStyle(color: subTitleColor, fontSize: 12)),
-                      Text(_formatTime(timeTaken), style: TextStyle(color: titleColor, fontSize: 16)),
-                    ],
+                  Icon(Icons.check_circle_rounded, color: successColor, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'All visible test cases passed',
+                      style: TextStyle(color: successColor, fontSize: 12),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Text(
-                '✅ All visible test cases passed\n✅ All hidden test cases passed',
-                style: TextStyle(color: greenColor, fontSize: 12),
-                textAlign: TextAlign.center,
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, color: successColor, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'All hidden test cases passed',
+                      style: TextStyle(color: successColor, fontSize: 12),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -566,8 +665,10 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
               Navigator.of(context).pop(true);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: greenColor,
+              backgroundColor: successColor,
               foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
             ),
             child: const Text('Continue')
           )
@@ -580,20 +681,28 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: _isDarkMode ? DarkAppColors.secondaryColor : Colors.white,
+        backgroundColor: cardBgColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(Icons.feedback, color: Colors.orange, size: 28),
-            const SizedBox(width: 8),
-            Text('Keep Trying!', style: TextStyle(color: titleColor)),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: warningColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.feedback_rounded, color: warningColor, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Text('Keep Trying!', style: TextStyle(color: textPrimaryColor)),
           ],
         ),
         content: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.orange.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.orange.withOpacity(0.3)),
+            color: warningColor.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: warningColor.withOpacity(0.2)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -601,46 +710,58 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
               Text(
                 'Submission Results',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: titleColor,
+                  color: textPrimaryColor,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Column(
-                    children: [
-                      Text('Score', style: TextStyle(color: subTitleColor, fontSize: 12)),
-                      Text('$finalScore%', style: TextStyle(
-                        color: finalScore >= 70 ? greenColor : Colors.orange,
-                        fontSize: 20, 
-                        fontWeight: FontWeight.bold
-                      )),
-                    ],
-                  ),
-                  Column(
-                    children: [
-                      Text('Time', style: TextStyle(color: subTitleColor, fontSize: 12)),
-                      Text(_formatTime(timeTaken), style: TextStyle(color: titleColor, fontSize: 16)),
-                    ],
-                  ),
-                ],
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cardBgColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: borderColor),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Column(
+                      children: [
+                        Text('Score', style: TextStyle(color: textTertiaryColor, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Text('$finalScore%', style: TextStyle(
+                          color: finalScore >= 70 ? successColor : warningColor,
+                          fontSize: 24, 
+                          fontWeight: FontWeight.bold
+                        )),
+                      ],
+                    ),
+                    Container(width: 1, height: 40, color: borderColor),
+                    Column(
+                      children: [
+                        Text('Time', style: TextStyle(color: textTertiaryColor, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Text(_formatTime(timeTaken), style: TextStyle(color: textPrimaryColor, fontSize: 18, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   Column(
                     children: [
-                      Text('Visible Tests', style: TextStyle(color: subTitleColor, fontSize: 12)),
+                      Text('Visible Tests', style: TextStyle(color: textTertiaryColor, fontSize: 12)),
+                      const SizedBox(height: 4),
                       Text(
                         '$visiblePassed/$visibleTotal',
                         style: TextStyle(
-                          color: visiblePassed == visibleTotal ? greenColor : redColor,
-                          fontSize: 16,
+                          color: visiblePassed == visibleTotal ? successColor : errorColor,
+                          fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -648,12 +769,13 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
                   ),
                   Column(
                     children: [
-                      Text('Hidden Tests', style: TextStyle(color: subTitleColor, fontSize: 12)),
+                      Text('Hidden Tests', style: TextStyle(color: textTertiaryColor, fontSize: 12)),
+                      const SizedBox(height: 4),
                       Text(
                         'Some Failed',
                         style: TextStyle(
-                          color: redColor,
-                          fontSize: 12,
+                          color: errorColor,
+                          fontSize: 14,
                           fontStyle: FontStyle.italic,
                         ),
                       ),
@@ -661,29 +783,106 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               if (visiblePassed == visibleTotal)
-                Text(
-                  '✅ All visible tests passed\n❌ Some hidden tests failed\n\n💡 Consider edge cases and boundary conditions',
-                  style: TextStyle(color: titleColor, fontSize: 12),
-                  textAlign: TextAlign.center,
+                Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.check_circle_rounded, color: successColor, size: 16),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'All visible tests passed',
+                            style: TextStyle(color: successColor, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.cancel_rounded, color: errorColor, size: 16),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Some hidden tests failed',
+                            style: TextStyle(color: errorColor, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Consider edge cases and boundary conditions',
+                      style: TextStyle(color: textSecondaryColor, fontSize: 12, fontStyle: FontStyle.italic),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 )
               else
-                Text(
-                  '❌ Some visible tests failed\n❌ Some hidden tests failed\n\n🔧 Review your logic and try again',
-                  style: TextStyle(color: titleColor, fontSize: 12),
-                  textAlign: TextAlign.center,
+                Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.cancel_rounded, color: errorColor, size: 16),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Some visible tests failed',
+                            style: TextStyle(color: errorColor, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.cancel_rounded, color: errorColor, size: 16),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Some hidden tests failed',
+                            style: TextStyle(color: errorColor, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Review your logic and try again',
+                      style: TextStyle(color: textSecondaryColor, fontSize: 12, fontStyle: FontStyle.italic),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
             ],
           ),
         ),
         actions: [
-          TextButton(
+          ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            style: TextButton.styleFrom(foregroundColor: primaryColor),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+            ),
             child: const Text('Try Again')
           )
         ],
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(color: Colors.white)),
+        backgroundColor: errorColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        margin: const EdgeInsets.all(16),
       ),
     );
   }
@@ -695,329 +894,112 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
       appBar: AppBar(
         title: Text(
           widget.exercise.title,
-          style: TextStyle(color: _isDarkMode ? Colors.white : Colors.black),
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         backgroundColor: primaryColor,
-        iconTheme: IconThemeData(color: _isDarkMode ? Colors.white : Colors.black),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           if (score != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: score! >= 70 ? greenColor : Colors.orange,
-                    borderRadius: BorderRadius.circular(16),
+            Container(
+              margin: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: score! >= 70 ? successColor : warningColor,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: (score! >= 70 ? successColor : warningColor).withOpacity(0.3),
+                    offset: const Offset(0, 2),
+                    blurRadius: 8,
                   ),
-                  child: Text(
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    score! >= 70 ? Icons.check_circle_rounded : Icons.info_rounded,
+                    color: Colors.white,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
                     'Score: $score%',
                     style: const TextStyle(
-                      fontSize: 14,
+                      fontSize: 12,
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
+                ],
               ),
             ),
-          IconButton(
-            onPressed: _toggleTheme,
-            icon: Icon(_isDarkMode ? Icons.light_mode : Icons.dark_mode),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
           Container(
-            color: secondaryColor,
-            child: TabBar(
-              controller: _tabController,
-              labelColor: primaryColor,
-              unselectedLabelColor: subTitleColor,
-              indicatorColor: primaryColor,
-              tabs: const [
-                Tab(text: 'Problem'),
-                Tab(text: 'Code Editor'),
-              ],
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
             ),
-          ),
-          
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildProblemTab(),
-                _buildCodeEditorTab(),
-              ],
+            child: IconButton(
+              onPressed: _toggleTheme,
+              icon: Icon(
+                _isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                color: Colors.white,
+              ),
+              tooltip: _isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode',
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildProblemTab() {
-    return Container(
-      color: scaffoldBgColor,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+      body: FadeTransition(
+        opacity: _fadeController,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              widget.exercise.title,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: titleColor,
-              ),
-            ),
-            const SizedBox(height: 16),
-            
+            // Modern Tab Bar
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: tipsBgColor,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: tipsBorderColor),
+                color: cardBgColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    offset: const Offset(0, 2),
+                    blurRadius: 8,
+                  ),
+                ],
               ),
-              child: Text(
-                widget.exercise.description,
-                style: TextStyle(
+              child: TabBar(
+                controller: _tabController,
+                labelColor: primaryColor,
+                unselectedLabelColor: textSecondaryColor,
+                indicatorColor: primaryColor,
+                indicatorWeight: 3,
+                indicatorSize: TabBarIndicatorSize.label,
+                labelStyle: const TextStyle(
                   fontSize: 16,
-                  color: titleColor,
-                  height: 1.5,
+                  fontWeight: FontWeight.w600,
                 ),
-              ),
-            ),
-            
-            const SizedBox(height: 20),
-            Text(
-              'Input Format:',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: titleColor,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: workoutBgColor,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                widget.exercise.inputFormat ?? 'No input format specified',
-                style: const TextStyle(
-                  fontSize: 14, 
-                  color: Colors.white,
-                  fontFamily: 'monospace',
+                unselectedLabelStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
                 ),
+                tabs: const [
+                  Tab(text: 'Problem'),
+                  Tab(text: 'Code Editor'),
+                ],
               ),
             ),
             
-            const SizedBox(height: 16),
-            Text(
-              'Output Format:',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: titleColor,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: workoutBgColor,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                widget.exercise.outputFormat ?? 'No output format specified',
-                style: const TextStyle(
-                  fontSize: 14, 
-                  color: Colors.white,
-                  fontFamily: 'monospace',
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 20),
-            Text(
-              'Constraints:',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: titleColor,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: workoutBgColor,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                widget.exercise.constraints ?? 'No constraints specified',
-                style: const TextStyle(
-                  fontSize: 14, 
-                  color: Colors.white,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            Text(
-              'Visible Test Cases:',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: titleColor,
-              ),
-            ),
-            const SizedBox(height: 12),
-            
-            // Display only visible test cases
-            ...widget.exercise.testCases.asMap().entries.map((entry) {
-              int index = entry.key;
-              var testCase = entry.value;
-              
-              return Container(
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: workoutBgColor,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: primaryColor.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Test Case ${index + 1}:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: primaryColor,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    RichText(
-                      text: TextSpan(
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 14,
-                          color: Colors.white,
-                        ),
-                        children: [
-                          const TextSpan(
-                            text: 'Input: ',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white70,
-                            ),
-                          ),
-                          TextSpan(
-                            text: testCase.input.isEmpty ? '(no input)' : testCase.input,
-                            style: const TextStyle(
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    RichText(
-                      text: TextSpan(
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 14,
-                          color: Colors.white,
-                        ),
-                        children: [
-                          const TextSpan(
-                            text: 'Expected Output: ',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white70,
-                            ),
-                          ),
-                          TextSpan(
-                            text: testCase.expectedOutput,
-                            style: const TextStyle(
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-            
-            const SizedBox(height: 20),
-            
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: primaryColor.withOpacity(0.3)),
-              ),
-              child: Text(
-                'Visible Test Cases: ${widget.exercise.testCases.length}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: primaryColor,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
                 children: [
-                  Text(
-                    'Important Notes:',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.orange[800],
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '• These are visible test cases for practice and debugging\n'
-                    '• Your final submission will be tested against additional hidden test cases\n'
-                    '• Hidden test cases validate edge cases and boundary conditions\n'
-                    '• Ensure your solution handles all possible valid inputs',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.orange[700],
-                    ),
-                  ),
+                  _buildProblemTab(),
+                  _buildCodeEditorTab(),
                 ],
               ),
             ),
@@ -1027,44 +1009,562 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     );
   }
 
-  Widget _buildCodeEditorTab() {
+  Widget _buildProblemTab() {
+    return SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(-0.3, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(
+        parent: _slideController,
+        curve: Curves.easeOutCubic,
+      )),
+      child: Container(
+        color: scaffoldBgColor,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header Card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [primaryColor, primaryColor.withOpacity(0.8)],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primaryColor.withOpacity(0.2),
+                      offset: const Offset(0, 4),
+                      blurRadius: 20,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.assignment_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            widget.exercise.title,
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Programming Exercise',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 24),
+              
+              // Description Card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: cardBgColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: borderColor),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      offset: const Offset(0, 2),
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: infoColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(Icons.description_rounded, color: infoColor, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Problem Description',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: textPrimaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      widget.exercise.description,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: textSecondaryColor,
+                        height: 1.6,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 20),
+              
+              // Input/Output Format Section
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildFormatCard(
+                      'Input Format',
+                      widget.exercise.inputFormat ?? 'No input format specified',
+                      Icons.input_rounded,
+                      successColor,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _buildFormatCard(
+                      'Output Format',
+                      widget.exercise.outputFormat ?? 'No output format specified',
+                      Icons.output_rounded,
+                      warningColor,
+                    ),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 20),
+              
+              // Constraints Card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: cardBgColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: borderColor),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      offset: const Offset(0, 2),
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: errorColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(Icons.rule_rounded, color: errorColor, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Constraints',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: textPrimaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: surfaceColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: borderColor),
+                      ),
+                      child: Text(
+                        widget.exercise.constraints ?? 'No constraints specified',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: textSecondaryColor,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Test Cases Section
+              Text(
+                'Visible Test Cases',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: textPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Test Cases
+              ...widget.exercise.testCases.asMap().entries.map((entry) {
+                int index = entry.key;
+                var testCase = entry.value;
+                
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: cardBgColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: primaryColor.withOpacity(0.2)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: primaryColor.withOpacity(0.05),
+                        offset: const Offset(0, 2),
+                        blurRadius: 12,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: primaryColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'Test Case ${index + 1}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: primaryColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _buildTestCaseField(
+                        'Input',
+                        testCase.input.isEmpty ? '(no input)' : testCase.input,
+                        successColor,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTestCaseField(
+                        'Expected Output',
+                        testCase.expectedOutput,
+                        infoColor,
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+              
+              const SizedBox(height: 20),
+              
+              // Info Cards
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: primaryColor.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: primaryColor.withOpacity(0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.info_rounded, color: primaryColor, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Visible Test Cases: ${widget.exercise.testCases.length}',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: primaryColor,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            'Use these to test and debug your solution',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: textSecondaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFormatCard(String title, String content, IconData icon, Color color) {
     return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: cardBgColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            offset: const Offset(0, 2),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: textPrimaryColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: surfaceColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: borderColor),
+            ),
+            child: Text(
+              content,
+              style: TextStyle(
+                fontSize: 14,
+                color: textSecondaryColor,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTestCaseField(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 4,
+              height: 16,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$label:',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: textSecondaryColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: borderColor),
+          ),
+          child: Text(
+            value,
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 14,
+              color: textPrimaryColor,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCodeEditorTab() {
+  return SlideTransition(
+    position: Tween<Offset>(
+      begin: const Offset(0.3, 0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _slideController,
+      curve: Curves.easeOutCubic,
+    )),
+    child: Container(
       color: scaffoldBgColor,
       child: Column(
         children: [
-          // Action buttons
+          // Modern Action Bar
           Container(
-            padding: const EdgeInsets.all(16),
-            color: secondaryColor,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: cardBgColor,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  offset: const Offset(0, 2),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  statusMessage,
-                  style: TextStyle(
-                    color: hasCompilationError ? redColor : titleColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                // Status Section
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: hasCompilationError 
+                              ? errorColor.withOpacity(0.1)
+                              : primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          hasCompilationError 
+                              ? Icons.error_rounded 
+                              : Icons.code_rounded,
+                          color: hasCompilationError ? errorColor : primaryColor,
+                          size: 16,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            statusMessage,
+                            style: TextStyle(
+                              color: hasCompilationError ? errorColor : textPrimaryColor,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          
+                        ],
+                      ),
+                    ],
                   ),
                 ),
+                
+                // Action Buttons
                 Row(
                   children: [
                     ElevatedButton.icon(
                       onPressed: (isRunning || isSubmitting) ? null : _runTestCases,
                       icon: isRunning 
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 16,
                               height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  _isDarkMode ? Colors.white : primaryColor,
+                                ),
+                              ),
                             )
-                          : const Icon(Icons.play_arrow),
+                          : const Icon(Icons.play_arrow_rounded, size: 18),
                       label: const Text('Test Visible'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryColor,
                         foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 12),
                     ElevatedButton.icon(
                       onPressed: (isRunning || isSubmitting) ? null : _submitSolution,
                       icon: isSubmitting 
@@ -1073,14 +1573,17 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
                               height: 16,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation(Colors.white),
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
-                          : const Icon(Icons.send),
+                          : const Icon(Icons.send_rounded, size: 18),
                       label: const Text('Final Submit'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: greenColor,
+                        backgroundColor: successColor,
                         foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       ),
                     ),
                   ],
@@ -1089,81 +1592,157 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
             ),
           ),
           
-          // Code editor
+          // Code Editor Section with Enhanced Features
           Expanded(
             flex: 3,
             child: Container(
-              margin: const EdgeInsets.all(16),
+              margin: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: primaryColor.withOpacity(0.3)),
+                color: cardBgColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    offset: const Offset(0, 4),
+                    blurRadius: 20,
+                  ),
+                ],
               ),
               child: Column(
                 children: [
+                  // Editor Header with Tools
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: primaryColor,
                       borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(8),
-                        topRight: Radius.circular(8),
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
                       ),
                     ),
                     child: Row(
                       children: [
+                        const Icon(Icons.code_rounded, color: Colors.white, size: 20),
+                        const SizedBox(width: 12),
                         const Text(
-                          'C Code Editor',
+                          'Smart C Code Editor',
                           style: TextStyle(
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w600,
                             color: Colors.white,
+                            fontSize: 16,
                           ),
                         ),
                         const Spacer(),
-                        if (_hasUnsavedChanges)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.orange,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              'Unsaved',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                              ),
-                            ),
+                        // Editor Tools
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
                           ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.auto_fix_high_rounded, color: Colors.white, size: 12),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Smart',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        
                       ],
                     ),
                   ),
+                  
+                  // Code Input Area with Enhanced Features
                   Expanded(
-                    child: TextFormField(
-                      controller: _codeController,
-                      focusNode: _codeFocusNode,
-                      maxLines: null,
-                      expands: true,
-                      keyboardType: TextInputType.multiline,
-                      textInputAction: TextInputAction.newline,
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        color: Colors.white,
-                        fontSize: 14,
-                        height: 1.4,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: _isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(16),
+                          bottomRight: Radius.circular(16),
+                        ),
                       ),
-                      decoration: const InputDecoration(
-                        contentPadding: EdgeInsets.all(16),
-                        border: InputBorder.none,
-                        hintText: 'Start typing your C code...',
-                        hintStyle: TextStyle(color: Colors.grey),
-                        filled: false,
+                      child: Stack(
+                        children: [
+                          // Line Numbers
+                          Positioned(
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            child: Container(
+                              width: 50,
+                              decoration: BoxDecoration(
+                                color: (_isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0)).withOpacity(0.3),
+                                border: Border(
+                                  right: BorderSide(
+                                    color: borderColor.withOpacity(0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Expanded(
+                                    child: SingleChildScrollView(
+                                      child: _buildLineNumbers(),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          
+                          // Enhanced Text Editor
+                          Positioned.fill(
+                            left: 50,
+                            child: RawKeyboardListener(
+                              focusNode: FocusNode(),
+                              onKey: _handleKeyPress,
+                              child: TextFormField(
+                                controller: _codeController,
+                                focusNode: _codeFocusNode,
+                                maxLines: null,
+                                expands: true,
+                                keyboardType: TextInputType.multiline,
+                                textInputAction: TextInputAction.newline,
+                                style: TextStyle(
+                                  fontFamily: 'monospace',
+                                  color: _isDarkMode ? Colors.white : const Color(0xFF1E293B),
+                                  fontSize: 14,
+                                  height: 1.4,
+                                ),
+                                decoration: InputDecoration(
+                                  contentPadding: const EdgeInsets.all(20),
+                                  border: InputBorder.none,
+                                  hintText: _getSmartHintText(),
+                                  hintStyle: TextStyle(
+                                    color: _isDarkMode 
+                                        ? Colors.white.withOpacity(0.3)
+                                        : Colors.grey.withOpacity(0.5),
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                  filled: false,
+                                ),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(RegExp(r'[\s\S]*')),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      inputFormatters: [
-                        // Allow all text input including backspace
-                        FilteringTextInputFormatter.allow(RegExp(r'[\s\S]*')),
-                      ],
                     ),
                   ),
                 ],
@@ -1171,63 +1750,104 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
             ),
           ),
           
-          // Output area
+          
+          
+          const SizedBox(height: 12),
+          
+          // Output Section
           if (outputText.isNotEmpty)
             Expanded(
               flex: 2,
               child: Container(
                 width: double.infinity,
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: primaryColor.withOpacity(0.3)),
+                  color: cardBgColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: borderColor),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      offset: const Offset(0, 4),
+                      blurRadius: 20,
+                    ),
+                  ],
                 ),
                 child: Column(
                   children: [
+                    // Output Header
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: hasCompilationError ? redColor : primaryColor,
+                        color: hasCompilationError ? errorColor : successColor,
                         borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(8),
-                          topRight: Radius.circular(8),
+                          topLeft: Radius.circular(16),
+                          topRight: Radius.circular(16),
                         ),
                       ),
                       child: Row(
                         children: [
+                          Icon(
+                            hasCompilationError 
+                                ? Icons.error_rounded 
+                                : Icons.terminal_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
                           Text(
                             hasCompilationError ? 'Compilation Error' : 'Output',
                             style: const TextStyle(
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w600,
                               color: Colors.white,
+                              fontSize: 16,
                             ),
                           ),
                           const Spacer(),
-                          TextButton(
-                            onPressed: _clearOutput,
-                            child: const Text(
-                              'Clear',
-                              style: TextStyle(color: Colors.white70),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: TextButton.icon(
+                              onPressed: _clearOutput,
+                              icon: const Icon(Icons.clear_rounded, color: Colors.white, size: 16),
+                              label: const Text(
+                                'Clear',
+                                style: TextStyle(color: Colors.white, fontSize: 12),
+                              ),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                minimumSize: Size.zero,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
+                    
+                    // Output Content
                     Expanded(
                       child: Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: _isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                          borderRadius: const BorderRadius.only(
+                            bottomLeft: Radius.circular(16),
+                            bottomRight: Radius.circular(16),
+                          ),
+                        ),
                         child: SingleChildScrollView(
                           controller: _outputScrollController,
                           child: SelectableText(
                             outputText,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontFamily: 'monospace',
                               fontSize: 12,
-                              color: Colors.white,
-                              height: 1.3,
+                              color: _isDarkMode ? Colors.white : const Color(0xFF1E293B),
+                              height: 1.4,
                             ),
                           ),
                         ),
@@ -1239,6 +1859,342 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
             ),
         ],
       ),
-    );
+    ),
+  );
+}
+
+// Enhanced helper methods for smart editing
+void _handleKeyPress(RawKeyEvent event) {
+  if (event is RawKeyDownEvent) {
+    final isShift = event.isShiftPressed;
+    final isCtrl = event.isControlPressed;
+    
+    // Handle Enter key for smart indentation
+    if (event.logicalKey == LogicalKeyboardKey.enter) {
+      _handleEnterKey();
+    }
+    // Handle Tab key for indentation
+    else if (event.logicalKey == LogicalKeyboardKey.tab && !isShift) {
+      _handleTabKey();
+    }
+    // Handle Shift+Tab for unindent
+    else if (event.logicalKey == LogicalKeyboardKey.tab && isShift) {
+      _handleShiftTab();
+    }
+    // Handle bracket auto-completion
+    else if (event.character == '{') {
+      _handleOpenBrace();
+    }
+    else if (event.character == '(') {
+      _handleOpenParen();
+    }
+    else if (event.character == '[') {
+      _handleOpenBracket();
+    }
+    // Handle Ctrl+/ for comment toggle
+    else if (event.logicalKey == LogicalKeyboardKey.slash && isCtrl) {
+      _toggleComment();
+    }
   }
+}
+
+void _handleEnterKey() {
+  final text = _codeController.text;
+  final selection = _codeController.selection;
+  
+  if (selection.baseOffset == selection.extentOffset) {
+    final cursorPos = selection.baseOffset;
+    final beforeCursor = text.substring(0, cursorPos);
+    final afterCursor = text.substring(cursorPos);
+    
+    // Get current line
+    final lines = beforeCursor.split('\n');
+    final currentLine = lines.isNotEmpty ? lines.last : '';
+    
+    // Calculate indentation
+    final indentation = _getLineIndentation(currentLine);
+    final needsExtraIndent = currentLine.trimRight().endsWith('{') || 
+                            currentLine.trimRight().endsWith('(') ||
+                            currentLine.contains('if') || 
+                            currentLine.contains('for') || 
+                            currentLine.contains('while');
+    
+    // Check if we need to add closing brace
+    final needsClosingBrace = currentLine.trimRight().endsWith('{') && 
+                              !afterCursor.trimLeft().startsWith('}');
+    
+    String newText = beforeCursor + '\n';
+    
+    if (needsExtraIndent) {
+      newText += indentation + '    '; // Add 4 spaces for indentation
+    } else {
+      newText += indentation;
+    }
+    
+    if (needsClosingBrace) {
+      newText += '\n' + indentation + '}';
+    }
+    
+    newText += afterCursor;
+    
+    final newCursorPos = beforeCursor.length + 1 + indentation.length + (needsExtraIndent ? 4 : 0);
+    
+    _codeController.text = newText;
+    _codeController.selection = TextSelection.collapsed(offset: newCursorPos);
+  }
+}
+
+void _handleTabKey() {
+  final selection = _codeController.selection;
+  final text = _codeController.text;
+  
+  if (selection.baseOffset == selection.extentOffset) {
+    // Single cursor - insert 4 spaces
+    final cursorPos = selection.baseOffset;
+    final newText = text.substring(0, cursorPos) + '    ' + text.substring(cursorPos);
+    _codeController.text = newText;
+    _codeController.selection = TextSelection.collapsed(offset: cursorPos + 4);
+  } else {
+    // Selection - indent selected lines
+    _indentSelection(true);
+  }
+}
+
+void _handleShiftTab() {
+  _indentSelection(false);
+}
+
+void _handleOpenBrace() {
+  final selection = _codeController.selection;
+  if (selection.baseOffset == selection.extentOffset) {
+    final cursorPos = selection.baseOffset;
+    final text = _codeController.text;
+    final beforeCursor = text.substring(0, cursorPos);
+    final afterCursor = text.substring(cursorPos);
+    
+    // Only insert closing brace if the opening brace was just typed
+    // Check if the character before cursor is '{'
+    if (cursorPos > 0 && beforeCursor[cursorPos - 1] == '{') {
+      // Check if next character is not already '}'
+      if (afterCursor.isEmpty || afterCursor[0] != '}') {
+        final newText = beforeCursor + '}' + afterCursor;
+        _codeController.text = newText;
+        _codeController.selection = TextSelection.collapsed(offset: cursorPos);
+      }
+    }
+  }
+}
+
+void _handleOpenParen() {
+  final selection = _codeController.selection;
+  if (selection.baseOffset == selection.extentOffset) {
+    final cursorPos = selection.baseOffset;
+    final text = _codeController.text;
+    final beforeCursor = text.substring(0, cursorPos);
+    final afterCursor = text.substring(cursorPos);
+    
+    // Only insert closing paren if the opening paren was just typed
+    if (cursorPos > 0 && beforeCursor[cursorPos - 1] == '(') {
+      // Check if next character is not already ')'
+      if (afterCursor.isEmpty || afterCursor[0] != ')') {
+        final newText = beforeCursor + ')' + afterCursor;
+        _codeController.text = newText;
+        _codeController.selection = TextSelection.collapsed(offset: cursorPos);
+      }
+    }
+  }
+}
+
+void _handleOpenBracket() {
+  final selection = _codeController.selection;
+  if (selection.baseOffset == selection.extentOffset) {
+    final cursorPos = selection.baseOffset;
+    final text = _codeController.text;
+    final beforeCursor = text.substring(0, cursorPos);
+    final afterCursor = text.substring(cursorPos);
+    
+    // Only insert closing bracket if the opening bracket was just typed
+    if (cursorPos > 0 && beforeCursor[cursorPos - 1] == '[') {
+      // Check if next character is not already ']'
+      if (afterCursor.isEmpty || afterCursor[0] != ']') {
+        final newText = beforeCursor + ']' + afterCursor;
+        _codeController.text = newText;
+        _codeController.selection = TextSelection.collapsed(offset: cursorPos);
+      }
+    }
+  }
+}
+
+void _toggleComment() {
+  final selection = _codeController.selection;
+  final text = _codeController.text;
+  final lines = text.split('\n');
+  
+  final startLine = _getLineNumber(selection.start);
+  final endLine = _getLineNumber(selection.end);
+  
+  bool shouldUncomment = true;
+  for (int i = startLine; i <= endLine; i++) {
+    if (i < lines.length && !lines[i].trimLeft().startsWith('//')) {
+      shouldUncomment = false;
+      break;
+    }
+  }
+  
+  for (int i = startLine; i <= endLine; i++) {
+    if (i < lines.length) {
+      if (shouldUncomment) {
+        lines[i] = lines[i].replaceFirst(RegExp(r'^\s*//\s?'), '');
+      } else {
+        final indentation = _getLineIndentation(lines[i]);
+        lines[i] = lines[i].replaceFirst(RegExp(r'^\s*'), '$indentation// ');
+      }
+    }
+  }
+  
+  _codeController.text = lines.join('\n');
+}
+
+String _getLineIndentation(String line) {
+  final match = RegExp(r'^(\s*)').firstMatch(line);
+  return match?.group(1) ?? '';
+}
+
+int _getLineNumber(int offset) {
+  final text = _codeController.text;
+  final beforeOffset = text.substring(0, offset);
+  return beforeOffset.split('\n').length - 1;
+}
+
+void _indentSelection(bool indent) {
+  final selection = _codeController.selection;
+  final text = _codeController.text;
+  final lines = text.split('\n');
+  
+  final startLine = _getLineNumber(selection.start);
+  final endLine = _getLineNumber(selection.end);
+  
+  for (int i = startLine; i <= endLine; i++) {
+    if (i < lines.length) {
+      if (indent) {
+        lines[i] = '    ' + lines[i];
+      } else {
+        lines[i] = lines[i].replaceFirst(RegExp(r'^    '), '');
+      }
+    }
+  }
+  
+  _codeController.text = lines.join('\n');
+}
+
+
+String _getSmartHintText() {
+  if (_codeController.text.trim().isEmpty || _codeController.text.trim() == '// Write your code here') {
+    return '''#include <stdio.h>
+
+int main() {
+    // Your solution here
+    return 0;
+}
+
+Tip: Use Ctrl+/ to toggle comments, Tab to indent''';
+  }
+  return 'Type your C code... (Smart features enabled)';
+}
+
+
+Widget _buildLineNumbers() {
+  final lines = _codeController.text.split('\n');
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: List.generate(lines.length.clamp(1, 1000), (index) {
+      return Container(
+        height: 19.6, // Match line height
+        padding: const EdgeInsets.only(right: 8),
+        alignment: Alignment.centerRight,
+        child: Text(
+          '${index + 1}',
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 12,
+            color: (_isDarkMode ? Colors.white : Colors.black).withOpacity(0.4),
+          ),
+        ),
+      );
+    }),
+  );
+}
+
+Widget _buildToolbarButton(String label, IconData icon, VoidCallback onPressed) {
+  return Padding(
+    padding: const EdgeInsets.only(right: 8),
+    child: InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: primaryColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: primaryColor.withOpacity(0.2)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: primaryColor),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: primaryColor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+void _insertText(String text) {
+  final selection = _codeController.selection;
+  final currentText = _codeController.text;
+  final cursorPos = selection.baseOffset;
+  
+  final newText = currentText.substring(0, cursorPos) + text + currentText.substring(cursorPos);
+  _codeController.text = newText;
+  _codeController.selection = TextSelection.collapsed(offset: cursorPos + text.length);
+}
+
+void _insertBraces() {
+  final selection = _codeController.selection;
+  final currentText = _codeController.text;
+  final cursorPos = selection.baseOffset;
+  
+  final newText = currentText.substring(0, cursorPos) + '{}' + currentText.substring(cursorPos);
+  _codeController.text = newText;
+  _codeController.selection = TextSelection.collapsed(offset: cursorPos + 1);
+}
+
+void _insertParentheses() {
+  final selection = _codeController.selection;
+  final currentText = _codeController.text;
+  final cursorPos = selection.baseOffset;
+  
+  final newText = currentText.substring(0, cursorPos) + '()' + currentText.substring(cursorPos);
+  _codeController.text = newText;
+  _codeController.selection = TextSelection.collapsed(offset: cursorPos + 1);
+}
+
+void _insertBrackets() {
+  final selection = _codeController.selection;
+  final currentText = _codeController.text;
+  final cursorPos = selection.baseOffset;
+  
+  final newText = currentText.substring(0, cursorPos) + '[]' + currentText.substring(cursorPos);
+  _codeController.text = newText;
+  _codeController.selection = TextSelection.collapsed(offset: cursorPos + 1);
+}
 }

@@ -89,6 +89,34 @@ router.post('/subjects', auth, adminOnly, async (req, res) => {
 // Enhanced create exercise with visible/hidden test case separation
 router.post('/exercises', auth, adminOnly, async (req, res) => {
   try {
+    console.log('\n=== RAW REQUEST BODY ===');
+    console.log('Request body type:', typeof req.body);
+    console.log('Request body exists:', req.body !== undefined);
+    console.log('Request body is null:', req.body === null);
+    console.log('Request headers:', req.headers);
+    
+    // Check if body is properly parsed
+    if (!req.body || typeof req.body !== 'object') {
+      console.error('❌ Request body is not a valid object:', req.body);
+      return res.status(400).json({ 
+        message: 'Invalid request body format',
+        error: 'Request body must be a valid JSON object',
+        received: typeof req.body
+      });
+    }
+    
+    // Convert body to string and check for [object Object]
+    const bodyStr = JSON.stringify(req.body);
+    if (bodyStr.includes('[object Object]')) {
+      console.error('❌ Found [object Object] in request body - serialization error');
+      return res.status(400).json({ 
+        message: 'Request body contains improperly serialized objects',
+        error: 'Frontend serialization error - objects not properly converted to JSON'
+      });
+    }
+    
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    
     const { 
       subject_id, 
       title, 
@@ -105,23 +133,32 @@ router.post('/exercises', auth, adminOnly, async (req, res) => {
     console.log('Title:', title);
     console.log('Visible test cases:', test_cases ? test_cases.length : 0);
     console.log('Hidden test cases:', hidden_test_cases ? hidden_test_cases.length : 0);
+    console.log('Raw test_cases:', JSON.stringify(test_cases, null, 2));
+    console.log('Raw hidden_test_cases:', JSON.stringify(hidden_test_cases, null, 2));
     
     if (!subject_id || !title || !description || !test_cases) {
       return res.status(400).json({ message: 'All required fields must be provided' });
     }
     
-    // Validate that exactly 3 visible test cases are provided
-    if (!Array.isArray(test_cases) || test_cases.length !== 3) {
+    // Validate that at least 1 visible test case is provided (flexible requirement)
+    if (!Array.isArray(test_cases) || test_cases.length === 0) {
       return res.status(400).json({ 
-        message: 'Exactly 3 visible test cases are required for students to practice with' 
+        message: 'At least 1 visible test case is required for students to practice with' 
       });
     }
     
-    // Validate that at least some test cases exist
-    const totalTestCases = test_cases.length + (hidden_test_cases ? hidden_test_cases.length : 0);
-    if (totalTestCases < 3) {
+    // Validate maximum of 3 visible test cases
+    if (test_cases.length > 3) {
       return res.status(400).json({ 
-        message: 'At least 3 total test cases are required (3 visible + 0 or more hidden)' 
+        message: 'Maximum 3 visible test cases are allowed' 
+      });
+    }
+    
+    // Validate that at least 1 total test case exists
+    const totalTestCases = test_cases.length + (hidden_test_cases ? hidden_test_cases.length : 0);
+    if (totalTestCases < 1) {
+      return res.status(400).json({ 
+        message: 'At least 1 test case is required' 
       });
     }
     
@@ -129,8 +166,8 @@ router.post('/exercises', auth, adminOnly, async (req, res) => {
     const validateTestCases = (testCases, type) => {
       for (let i = 0; i < testCases.length; i++) {
         const tc = testCases[i];
-        if (!tc.hasOwnProperty('input') || !tc.hasOwnProperty('expectedOutput') && !tc.hasOwnProperty('expected_output')) {
-          throw new Error(`${type} test case ${i + 1} is missing required fields (input, expectedOutput)`);
+        if (!tc.hasOwnProperty('input') || (!tc.hasOwnProperty('expectedOutput') && !tc.hasOwnProperty('expected_output'))) {
+          throw new Error(`${type} test case ${i + 1} is missing required fields (input, expectedOutput or expected_output)`);
         }
       }
     };
@@ -140,6 +177,20 @@ router.post('/exercises', auth, adminOnly, async (req, res) => {
       validateTestCases(hidden_test_cases, 'Hidden');
     }
     
+    // Normalize test cases to ensure proper structure
+    const normalizedTestCases = test_cases.map(tc => ({
+      input: tc.input ? tc.input.toString() : '',
+      expected_output: tc.expected_output ? tc.expected_output.toString() : (tc.expectedOutput ? tc.expectedOutput.toString() : '')
+    }));
+
+    const normalizedHiddenTestCases = (hidden_test_cases || []).map(tc => ({
+      input: tc.input ? tc.input.toString() : '',
+      expected_output: tc.expected_output ? tc.expected_output.toString() : (tc.expectedOutput ? tc.expectedOutput.toString() : '')
+    }));
+
+    console.log('Normalized test_cases:', normalizedTestCases);
+    console.log('Normalized hidden_test_cases:', normalizedHiddenTestCases);
+
     const result = await pool.query(`
       INSERT INTO exercises (
         subject_id, title, description, input_format, output_format, 
@@ -153,8 +204,8 @@ router.post('/exercises', auth, adminOnly, async (req, res) => {
       input_format || null,
       output_format || null,
       constraints || null,
-      JSON.stringify(test_cases),                    // Visible test cases (exactly 3)
-      JSON.stringify(hidden_test_cases || []),       // Hidden test cases (unlimited)
+      JSON.stringify(normalizedTestCases),
+      JSON.stringify(normalizedHiddenTestCases),
       difficulty_level || 'medium'
     ]);
     
@@ -203,8 +254,34 @@ router.delete('/exercises/:exerciseId', auth, adminOnly, async (req, res) => {
     }
 
     const exercise = exerciseCheck.rows[0];
-    const visibleCount = JSON.parse(exercise.test_cases || '[]').length;
-    const hiddenCount = JSON.parse(exercise.hidden_test_cases || '[]').length;
+    
+    // Safely parse test cases with error handling
+    let visibleCount = 0;
+    let hiddenCount = 0;
+    
+    try {
+      const testCases = exercise.test_cases;
+      if (typeof testCases === 'string') {
+        visibleCount = JSON.parse(testCases).length;
+      } else if (Array.isArray(testCases)) {
+        visibleCount = testCases.length;
+      }
+    } catch (e) {
+      console.log('Error parsing visible test cases:', e.message);
+      visibleCount = 0;
+    }
+    
+    try {
+      const hiddenTestCases = exercise.hidden_test_cases;
+      if (typeof hiddenTestCases === 'string') {
+        hiddenCount = JSON.parse(hiddenTestCases).length;
+      } else if (Array.isArray(hiddenTestCases)) {
+        hiddenCount = hiddenTestCases.length;
+      }
+    } catch (e) {
+      console.log('Error parsing hidden test cases:', e.message);
+      hiddenCount = 0;
+    }
     
     console.log(`Found exercise: "${exercise.title}" (ID: ${exerciseId})`);
     console.log(`- Visible test cases: ${visibleCount}`);
@@ -251,15 +328,37 @@ router.get('/exercises', auth, adminOnly, async (req, res) => {
     
     // Add test case counts to each exercise for admin overview
     const exercisesWithCounts = result.rows.map(exercise => {
-      const visibleTestCases = JSON.parse(exercise.test_cases || '[]');
-      const hiddenTestCases = JSON.parse(exercise.hidden_test_cases || '[]');
+      let visibleCount = 0;
+      let hiddenCount = 0;
+      
+      try {
+        const testCases = exercise.test_cases;
+        if (typeof testCases === 'string') {
+          visibleCount = JSON.parse(testCases).length;
+        } else if (Array.isArray(testCases)) {
+          visibleCount = testCases.length;
+        }
+      } catch (e) {
+        console.log('Error parsing visible test cases for exercise', exercise.id, ':', e.message);
+      }
+      
+      try {
+        const hiddenTestCases = exercise.hidden_test_cases;
+        if (typeof hiddenTestCases === 'string') {
+          hiddenCount = JSON.parse(hiddenTestCases).length;
+        } else if (Array.isArray(hiddenTestCases)) {
+          hiddenCount = hiddenTestCases.length;
+        }
+      } catch (e) {
+        console.log('Error parsing hidden test cases for exercise', exercise.id, ':', e.message);
+      }
       
       return {
         ...exercise,
         testCaseSummary: {
-          visible: visibleTestCases.length,
-          hidden: hiddenTestCases.length,
-          total: visibleTestCases.length + hiddenTestCases.length
+          visible: visibleCount,
+          hidden: hiddenCount,
+          total: visibleCount + hiddenCount
         }
       };
     });
@@ -272,6 +371,60 @@ router.get('/exercises', auth, adminOnly, async (req, res) => {
   }
 });
 
+<<<<<<< HEAD
+=======
+router.get('/online-users', auth, adminOnly, async (req, res) => {
+  try {
+    console.log('Admin requesting online users...');
+    
+    // Get users marked as online in database
+    const result = await pool.query(`
+      SELECT 
+        id, name, enroll_number, year, section, batch, role, 
+        is_online, last_active, created_at, ip_address
+      FROM users
+      WHERE role = 'student' AND is_online = true
+      ORDER BY last_active DESC
+    `);
+    
+    console.log(`Found ${result.rows.length} students marked as online in database`);
+    
+    const onlineUsers = result.rows.map(user => {
+      console.log(`  - ${user.name} (${user.enroll_number}) - Last active: ${user.last_active} - IP: ${user.ip_address}`);
+      
+      return {
+        id: user.id,
+        name: user.name,
+        enrollNumber: user.enroll_number,
+        year: user.year,
+        section: user.section,
+        batch: user.batch,
+        role: user.role,
+        isOnline: user.is_online,
+        lastActive: user.last_active,
+        ipAddress: user.ip_address,
+        status: 'online'
+      };
+    });
+    
+    // Also check socket connections for comparison
+    const io = req.app.get('socketio') || req.app.get('io');
+    const socketConnections = io ? io.sockets.sockets.size : 0;
+    
+    console.log(`Returning ${onlineUsers.length} online users. Socket connections: ${socketConnections}`);
+    
+    // Return the array directly (not wrapped in an object)
+    res.json(onlineUsers);
+    
+  } catch (error) {
+    console.error('Error fetching online users:', error);
+    res.status(500).json({ 
+      message: 'Server error',
+      error: error.message 
+    });
+  }
+});
+>>>>>>> main
 
 
 
@@ -288,15 +441,38 @@ router.get('/exercises/:exerciseId', auth, adminOnly, async (req, res) => {
     }
     
     const exercise = result.rows[0];
-    const visibleTestCases = JSON.parse(exercise.test_cases || '[]');
-    const hiddenTestCases = JSON.parse(exercise.hidden_test_cases || '[]');
+    
+    let visibleCount = 0;
+    let hiddenCount = 0;
+    
+    try {
+      const testCases = exercise.test_cases;
+      if (typeof testCases === 'string') {
+        visibleCount = JSON.parse(testCases).length;
+      } else if (Array.isArray(testCases)) {
+        visibleCount = testCases.length;
+      }
+    } catch (e) {
+      console.log('Error parsing visible test cases for exercise', exercise.id, ':', e.message);
+    }
+    
+    try {
+      const hiddenTestCases = exercise.hidden_test_cases;
+      if (typeof hiddenTestCases === 'string') {
+        hiddenCount = JSON.parse(hiddenTestCases).length;
+      } else if (Array.isArray(hiddenTestCases)) {
+        hiddenCount = hiddenTestCases.length;
+      }
+    } catch (e) {
+      console.log('Error parsing hidden test cases for exercise', exercise.id, ':', e.message);
+    }
     
     res.json({
       ...exercise,
       testCaseSummary: {
-        visible: visibleTestCases.length,
-        hidden: hiddenTestCases.length,
-        total: visibleTestCases.length + hiddenTestCases.length
+        visible: visibleCount,
+        hidden: hiddenCount,
+        total: visibleCount + hiddenCount
       }
     });
   } catch (error) {
@@ -800,7 +976,7 @@ router.get('/student-progress/:studentId/:exerciseId', auth, adminOnly, async (r
     const activities = await pool.query(`
       SELECT 
         activity_type, status, score, tests_passed, total_tests,
-        test_results, created_at
+        test_results, code, created_at
       FROM student_activities
       WHERE user_id = $1 AND exercise_id = $2
       ORDER BY created_at ASC
@@ -861,6 +1037,93 @@ router.get('/student-exercises/:studentId', auth, adminOnly, async (req, res) =>
   } catch (error) {
     console.error('Error fetching student exercises:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Store admin IP address in database
+router.post('/store-ip', async (req, res) => {
+  try {
+    const { ip } = req.body;
+    
+    if (!ip) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'IP address is required' 
+      });
+    }
+    
+    console.log('Storing admin IP in database:', ip);
+    
+    // Update the IP address for admin users
+    const result = await pool.query(`
+      UPDATE users 
+      SET ip_address = $1, updated_at = NOW() 
+      WHERE role = 'admin'
+      RETURNING id, enroll_number, ip_address
+    `, [ip]);
+    
+    if (result.rows.length > 0) {
+      console.log('Admin IP stored successfully:', ip);
+      res.json({ 
+        success: true,
+        message: 'Admin IP stored successfully',
+        ip: ip,
+        updatedAdmins: result.rows.length
+      });
+    } else {
+      console.log('No admin users found to update');
+      res.status(404).json({ 
+        success: false,
+        message: 'No admin users found' 
+      });
+    }
+  } catch (error) {
+    console.error('Error storing admin IP:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error while storing admin IP',
+      error: error.message 
+    });
+  }
+});
+
+// Get admin IP address from database
+router.get('/ip', async (req, res) => {
+  try {
+    console.log('Fetching admin IP from database...');
+    
+    // Get the IP address of the admin user from the users table
+    const result = await pool.query(`
+      SELECT ip_address 
+      FROM users 
+      WHERE role = 'admin' 
+      AND ip_address IS NOT NULL 
+      ORDER BY updated_at DESC 
+      LIMIT 1
+    `);
+    
+    if (result.rows.length > 0 && result.rows[0].ip_address) {
+      const adminIp = result.rows[0].ip_address;
+      console.log('Admin IP found in database:', adminIp);
+      
+      res.json({ 
+        success: true,
+        ip: adminIp 
+      });
+    } else {
+      console.log('No admin IP found in database');
+      res.status(404).json({ 
+        success: false,
+        message: 'Admin IP not found in database' 
+      });
+    }
+  } catch (error) {
+    console.error('Error fetching admin IP:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error while fetching admin IP',
+      error: error.message 
+    });
   }
 });
 

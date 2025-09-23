@@ -393,6 +393,31 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle tab switch detection
+  socket.on('tab-switch-detected', async (data) => {
+    const user = connectedSockets.get(socket.id);
+    if (user) {
+      console.log(`🚨 Tab switch detected for user: ${user.name} (${user.enrollNumber})`);
+      console.log(`Exercise ID: ${data.exerciseId}, Switch count: ${data.switchCount}`);
+      
+      // Broadcast to admin for real-time monitoring
+      io.emit('student-tab-switch', {
+        userId: user.enrollNumber,
+        userName: user.name,
+        exerciseId: data.exerciseId,
+        switchCount: data.switchCount,
+        timestamp: new Date().toISOString(),
+        isMalpractice: data.switchCount >= 3
+      });
+      
+      // Update last activity
+      const userConnection = connectedUsers.get(user.enrollNumber);
+      if (userConnection) {
+        userConnection.lastActivity = new Date();
+      }
+    }
+  });
+
   // Handle get online users request
   socket.on('get-online-users', () => {
     try {
@@ -636,6 +661,10 @@ async function initDatabase() {
     await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS language VARCHAR(20) DEFAULT 'c'`);
     await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS test_cases_passed INTEGER DEFAULT 0`);
     await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS total_test_cases INTEGER DEFAULT 0`);
+    
+    // Add new columns for tab switch detection and malpractice tracking
+    await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS ismalpractice BOOLEAN DEFAULT false`);
+    await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS tabswitch INTEGER DEFAULT 0`);
     
     console.log('✅ Database tables initialized successfully');
     

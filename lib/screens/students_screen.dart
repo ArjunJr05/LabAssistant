@@ -23,6 +23,7 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
   bool isLoadingExercises = false;
     bool _isRefreshing = false;
   Set<int> completedExerciseIds = {};
+  Set<int> malpracticeExerciseIds = {};
   late AnimationController _fadeController;
   late AnimationController _slideController;
   
@@ -173,6 +174,9 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
         
         // Load completed exercises with improved error handling
         await _loadCompletedExercises();
+        
+        // Load malpractice exercises
+        await _loadMalpracticeExercises();
       }
     } catch (e) {
       print('❌ Error loading exercises: $e');
@@ -218,7 +222,7 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
               continue; // Skip non-passed submissions
             }
           } else if (item is int) {
-            exerciseId = item as int?;
+            exerciseId = item as int;
           }
           
           if (exerciseId != null) {
@@ -236,6 +240,59 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
       }
     } catch (e) {
       print('❌ Error loading completed exercises: $e');
+    }
+  }
+
+  Future<void> _loadMalpracticeExercises() async {
+    try {
+      if (_apiService != null && _authService?.user != null) {
+        print('🔄 Loading malpractice exercises for user: ${_authService!.user!.enrollNumber}');
+        
+        final malpracticeExercises = await _apiService!.getMalpracticeExercises();
+        print('📋 Raw malpractice exercises data: $malpracticeExercises');
+        
+        Set<int> newMalpracticeIds = {};
+        
+        for (var item in malpracticeExercises) {
+          int? exerciseId;
+          
+          if (item is Map<String, dynamic>) {
+            // Try different possible key names for exercise ID
+            var rawId = item['exercise_id'] ?? 
+                       item['exerciseId'] ?? 
+                       item['id'] ??
+                       item['exercise']?['id'];
+            
+            if (rawId is int) {
+              exerciseId = rawId;
+            } else if (rawId is String) {
+              exerciseId = int.tryParse(rawId);
+            }
+            
+            // Check if this is marked as malpractice
+            var isMalpractice = item['ismalpractice'] == true || item['is_malpractice'] == true;
+            if (!isMalpractice) {
+              continue; // Skip non-malpractice submissions
+            }
+          } else if (item is int) {
+            exerciseId = item as int;
+          }
+          
+          if (exerciseId != null) {
+            newMalpracticeIds.add(exerciseId);
+          }
+        }
+        
+        print('✅ Processed malpractice exercise IDs: $newMalpracticeIds');
+        
+        if (mounted) {
+          setState(() {
+            malpracticeExerciseIds = newMalpracticeIds;
+          });
+        }
+      }
+    } catch (e) {
+      print('❌ Error loading malpractice exercises: $e');
     }
   }
 
@@ -836,6 +893,7 @@ Future<void> _refreshCompletionStatus() async {
                                             itemBuilder: (context, index) {
                                               final exercise = exercises[index];
                                               final isCompleted = completedExerciseIds.contains(exercise.id);
+                                              final isMalpractice = malpracticeExerciseIds.contains(exercise.id);
                                               
                                               return AnimatedContainer(
                                                 duration: const Duration(milliseconds: 300),
@@ -846,26 +904,37 @@ Future<void> _refreshCompletionStatus() async {
                                                   shape: RoundedRectangleBorder(
                                                     borderRadius: BorderRadius.circular(16),
                                                     side: BorderSide(
-                                                      color: isCompleted
-                                                          ? const Color(0xFF059669).withOpacity(0.3)
-                                                          : const Color(0xFFE2E8F0),
-                                                      width: isCompleted ? 2 : 1,
+                                                      color: isMalpractice
+                                                          ? const Color(0xFFDC2626).withOpacity(0.5)
+                                                          : isCompleted
+                                                              ? const Color(0xFF059669).withOpacity(0.3)
+                                                              : const Color(0xFFE2E8F0),
+                                                      width: isMalpractice ? 2 : isCompleted ? 2 : 1,
                                                     ),
                                                   ),
                                                   child: Container(
                                                     decoration: BoxDecoration(
                                                       borderRadius: BorderRadius.circular(16),
-                                                      gradient: isCompleted
+                                                      gradient: isMalpractice
                                                           ? LinearGradient(
                                                               begin: Alignment.topLeft,
                                                               end: Alignment.bottomRight,
                                                               colors: [
-                                                                const Color(0xFF059669).withOpacity(0.05),
+                                                                const Color(0xFFDC2626).withOpacity(0.05),
                                                                 Colors.white,
                                                               ],
                                                             )
-                                                          : null,
-                                                      color: isCompleted ? null : Colors.white,
+                                                          : isCompleted
+                                                              ? LinearGradient(
+                                                                  begin: Alignment.topLeft,
+                                                                  end: Alignment.bottomRight,
+                                                                  colors: [
+                                                                    const Color(0xFF059669).withOpacity(0.05),
+                                                                    Colors.white,
+                                                                  ],
+                                                                )
+                                                              : null,
+                                                      color: isMalpractice || isCompleted ? null : Colors.white,
                                                     ),
                                                     child: ListTile(
                                                       contentPadding: const EdgeInsets.all(20),
@@ -875,36 +944,55 @@ Future<void> _refreshCompletionStatus() async {
                                                         height: 48,
                                                         decoration: BoxDecoration(
                                                           shape: BoxShape.circle,
-                                                          gradient: isCompleted 
+                                                          gradient: isMalpractice
                                                               ? const LinearGradient(
                                                                   colors: [
-                                                                    Color(0xFF10B981),
-                                                                    Color(0xFF059669),
+                                                                    Color(0xFFDC2626),
+                                                                    Color(0xFFB91C1C),
                                                                   ],
                                                                 )
-                                                              : LinearGradient(
-                                                                  colors: [
-                                                                    const Color(0xFF3B82F6).withOpacity(0.1),
-                                                                    const Color(0xFF1E40AF).withOpacity(0.1),
-                                                                  ],
-                                                                ),
-                                                          boxShadow: isCompleted
+                                                              : isCompleted 
+                                                                  ? const LinearGradient(
+                                                                      colors: [
+                                                                        Color(0xFF10B981),
+                                                                        Color(0xFF059669),
+                                                                      ],
+                                                                    )
+                                                                  : LinearGradient(
+                                                                      colors: [
+                                                                        const Color(0xFF3B82F6).withOpacity(0.1),
+                                                                        const Color(0xFF1E40AF).withOpacity(0.1),
+                                                                      ],
+                                                                    ),
+                                                          boxShadow: isMalpractice
                                                               ? [
                                                                   BoxShadow(
-                                                                    color: const Color(0xFF10B981).withOpacity(0.3),
+                                                                    color: const Color(0xFFDC2626).withOpacity(0.3),
                                                                     offset: const Offset(0, 4),
                                                                     blurRadius: 12,
                                                                   ),
                                                                 ]
-                                                              : null,
+                                                              : isCompleted
+                                                                  ? [
+                                                                      BoxShadow(
+                                                                        color: const Color(0xFF10B981).withOpacity(0.3),
+                                                                        offset: const Offset(0, 4),
+                                                                        blurRadius: 12,
+                                                                      ),
+                                                                    ]
+                                                                  : null,
                                                         ),
                                                         child: Icon(
-                                                          isCompleted 
-                                                              ? Icons.check_rounded
-                                                              : Icons.code_rounded,
-                                                          color: isCompleted 
+                                                          isMalpractice
+                                                              ? Icons.block_rounded
+                                                              : isCompleted 
+                                                                  ? Icons.check_rounded
+                                                                  : Icons.code_rounded,
+                                                          color: isMalpractice
                                                               ? Colors.white
-                                                              : const Color(0xFF3B82F6),
+                                                              : isCompleted 
+                                                                  ? Colors.white
+                                                                  : const Color(0xFF3B82F6),
                                                           size: 24,
                                                         ),
                                                       ),
@@ -916,13 +1004,46 @@ Future<void> _refreshCompletionStatus() async {
                                                               style: TextStyle(
                                                                 fontWeight: FontWeight.bold,
                                                                 fontSize: 18,
-                                                                color: isCompleted
-                                                                    ? const Color(0xFF059669)
-                                                                    : const Color(0xFF1E293B),
+                                                                color: isMalpractice
+                                                                    ? const Color(0xFFDC2626)
+                                                                    : isCompleted
+                                                                        ? const Color(0xFF059669)
+                                                                        : const Color(0xFF1E293B),
                                                               ),
                                                             ),
                                                           ),
-                                                          if (isCompleted) ...[
+                                                          if (isMalpractice) ...[
+                                                            const SizedBox(width: 12),
+                                                            Container(
+                                                              padding: const EdgeInsets.symmetric(
+                                                                horizontal: 12, vertical: 6),
+                                                              decoration: BoxDecoration(
+                                                                gradient: const LinearGradient(
+                                                                  colors: [
+                                                                    Color(0xFFDC2626),
+                                                                    Color(0xFFB91C1C),
+                                                                  ],
+                                                                ),
+                                                                borderRadius: BorderRadius.circular(20),
+                                                                boxShadow: [
+                                                                  BoxShadow(
+                                                                    color: const Color(0xFFDC2626).withOpacity(0.3),
+                                                                    offset: const Offset(0, 2),
+                                                                    blurRadius: 6,
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                              child: const Text(
+                                                                'MALPRACTICE',
+                                                                style: TextStyle(
+                                                                  color: Colors.white,
+                                                                  fontSize: 11,
+                                                                  fontWeight: FontWeight.bold,
+                                                                  letterSpacing: 0.5,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ] else if (isCompleted) ...[
                                                             const SizedBox(width: 12),
                                                             Container(
                                                               padding: const EdgeInsets.symmetric(
@@ -1034,6 +1155,12 @@ Future<void> _refreshCompletionStatus() async {
                                                         ),
                                                       ),
                                                       onTap: () async {
+                                                        // Prevent access to malpractice exercises
+                                                        if (isMalpractice) {
+                                                          _showErrorSnackBar('This exercise is blocked due to malpractice (tab switching)');
+                                                          return;
+                                                        }
+                                                        
                                                         final result = await Navigator.push(
                                                           context,
                                                           PageRouteBuilder(

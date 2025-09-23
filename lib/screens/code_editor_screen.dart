@@ -8,7 +8,7 @@ import 'package:labassistant/services/socket_services.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../models/test_result_model.dart';
-import 'dart:html' as html;
+// Removed dart:html import - using Flutter's WidgetsBindingObserver for cross-platform compatibility
 
 
 class ModernAppColors {
@@ -194,14 +194,20 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     super.dispose();
   }
 
-  // Tab switching detection
+  // Cross-platform tab switching detection using Flutter's lifecycle observer
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    // Detect when user switches away from the app (tab switching or app switching)
+    if (state == AppLifecycleState.paused || 
+        state == AppLifecycleState.inactive || 
+        state == AppLifecycleState.hidden) {
       _handleTabSwitch();
     }
+    
+    // Optional: Log lifecycle changes for debugging
+    print('App lifecycle state changed to: $state');
   }
 
   Future<void> _checkForMalpracticeStatus() async {
@@ -262,6 +268,10 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
       print('Error tracking tab switch: $e');
       // Fallback to local tracking if API fails
       _tabSwitchCount++;
+      
+      // Send tab switch event for monitoring
+      _sendTabSwitchEvent();
+      
       if (_tabSwitchCount >= 3) {
         _handleMalpractice();
       } else {
@@ -629,59 +639,14 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     });
   }
 
-  // Tab switch detection methods
+  // Tab switch detection methods - using Flutter's WidgetsBindingObserver for cross-platform compatibility
   void _initializeTabSwitchDetection() {
-    // Listen for visibility changes (tab switches)
-    html.document.addEventListener('visibilitychange', _handleVisibilityChange);
-    
-    // Listen for window focus/blur events as backup
-    html.window.addEventListener('blur', _handleWindowBlur);
-    html.window.addEventListener('focus', _handleWindowFocus);
+    // Tab switching detection is now handled by didChangeAppLifecycleState
+    // which is already implemented in this class and works across all platforms
+    print('Tab switch detection initialized using Flutter lifecycle observer');
   }
 
-  void _handleVisibilityChange(html.Event event) {
-    if (html.document.hidden == true) {
-      // Tab became hidden (user switched away)
-      _onTabSwitch();
-    }
-  }
-
-  void _handleWindowBlur(html.Event event) {
-    // Window lost focus (user switched to another application)
-    _onTabSwitch();
-  }
-
-  void _handleWindowFocus(html.Event event) {
-    // Window gained focus - could show a warning if needed
-    if (_showingMalpracticeWarning) {
-      _showTabSwitchWarningDialog();
-    }
-  }
-
-  void _onTabSwitch() {
-    if (_isExerciseBlocked) return; // Don't count if already blocked
-    
-    setState(() {
-      _tabSwitchCount++;
-      _showingMalpracticeWarning = true;
-    });
-    
-    print('Tab switch detected! Count: $_tabSwitchCount');
-    
-    // Send tab switch event to server
-    _sendTabSwitchEvent();
-    
-    // Check if this is the third tab switch
-    if (_tabSwitchCount >= 3) {
-      setState(() {
-        _isExerciseBlocked = true;
-      });
-      _blockExercise();
-    } else {
-      // Show warning for first and second switch
-      _showTabSwitchWarningDialog();
-    }
-  }
+  // Removed _onTabSwitch method - functionality moved to _handleTabSwitch for better organization
 
   Future<void> _sendTabSwitchEvent() async {
     try {
@@ -704,96 +669,9 @@ class _CodeEditorScreenState extends State<CodeEditorScreen> with TickerProvider
     }
   }
 
-  void _showTabSwitchWarningDialog() {
-    if (!mounted) return;
-    
-    setState(() {
-      _showingMalpracticeWarning = false;
-    });
-    
-    String title;
-    String message;
-    Color iconColor;
-    IconData icon;
-    
-    if (_tabSwitchCount == 1) {
-      title = 'First Warning';
-      message = 'Tab switching detected! This is your first warning. You have 2 more chances before the exercise is blocked.';
-      iconColor = warningColor;
-      icon = Icons.warning_rounded;
-    } else if (_tabSwitchCount == 2) {
-      title = 'Second Warning';
-      message = 'Tab switching detected again! This is your second warning. One more tab switch will block this exercise.';
-      iconColor = Colors.orange;
-      icon = Icons.warning_amber_rounded;
-    } else {
-      title = 'Exercise Blocked';
-      message = 'You have switched tabs 3 times. This exercise is now blocked and marked as malpractice.';
-      iconColor = errorColor;
-      icon = Icons.block_rounded;
-    }
-    
-    showDialog(
-      context: context,
-      barrierDismissible: _tabSwitchCount < 3,
-      builder: (context) => AlertDialog(
-        backgroundColor: cardBgColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: iconColor, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Text(title, style: TextStyle(color: textPrimaryColor)),
-          ],
-        ),
-        content: Text(
-          message,
-          style: TextStyle(color: textSecondaryColor),
-        ),
-        actions: _tabSwitchCount >= 3 ? [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pop(); // Exit the exercise
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: errorColor,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('Exit Exercise'),
-          ),
-        ] : [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('I Understand', style: TextStyle(color: primaryColor)),
-          ),
-        ],
-      ),
-    );
-  }
+  // Removed _showTabSwitchWarningDialog - functionality handled by _showTabSwitchWarning method
 
-  void _blockExercise() {
-    // Disable all interactions
-    _codeController.text = '// This exercise has been blocked due to malpractice (tab switching).\n// You cannot continue with this exercise.';
-    
-    _updateOutput('\n🚨 EXERCISE BLOCKED 🚨\n');
-    _updateOutput('Reason: Tab switching detected (3 times)\n');
-    _updateOutput('This exercise has been marked as malpractice.\n');
-    _updateOutput('Please contact your instructor for further assistance.\n');
-    _updateOutput('${"=" * 50}\n');
-    
-    setState(() {
-      statusMessage = 'Exercise Blocked - Malpractice Detected';
-    });
-  }
+  // Removed _blockExercise method - functionality handled by _handleMalpractice and dialog methods
 
   Future<void> _runTestCases() async {
     // Check if exercise is blocked

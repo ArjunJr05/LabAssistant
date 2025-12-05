@@ -1,0 +1,1055 @@
+// lib/services/api_service.dart
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:labassistant/models/excercise_model.dart';
+import '../models/subject_model.dart';
+import '../models/user_model.dart';
+import 'auth_service.dart';
+import 'config_service.dart';
+
+class ApiService {
+  final AuthService authService;
+
+  ApiService(this.authService);
+
+  Future<String> get baseUrl async {
+    // Always get fresh URL to avoid caching issues
+    final url = await ConfigService.getFreshApiBaseUrl();
+    print('🔧 Base URL constructed: $url');
+    return url;
+  }
+
+  // Debug method to test database connection and content
+  Future<Map<String, dynamic>> debugDatabase() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/exercises/debug/database'),
+        headers: authService.authHeaders,
+      );
+
+      print('Debug response status: ${response.statusCode}');
+      print('Debug response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to get debug info: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching debug info: $e');
+      throw Exception('Error fetching debug info: $e');
+    }
+  }
+
+  // Student self-lock (for tab switching detection)
+  Future<void> lockStudent(String enrollNumber, int tabSwitchCount) async {
+    try {
+      // Construct URL directly to avoid caching issues
+      final serverIp = await ConfigService.getServerIp();
+      final serverPort = await ConfigService.getServerPort();
+      final requestUrl = 'http://$serverIp:$serverPort/api/student/lock-self';
+      final requestBody = {
+        'tabSwitchCount': tabSwitchCount,
+        'lockedAt': DateTime.now().toIso8601String(),
+      };
+      
+      print('🌐 Making lock-self API request:');
+      print('  - URL: $requestUrl');
+      print('  - Headers: ${authService.authHeaders}');
+      print('  - Body: ${json.encode(requestBody)}');
+      
+      final response = await http.post(
+        Uri.parse(requestUrl),
+        headers: authService.authHeaders,
+        body: json.encode(requestBody),
+      );
+
+      print('📡 Lock-self API response:');
+      print('  - Status Code: ${response.statusCode}');
+      print('  - Response Body: ${response.body}');
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to lock student: ${response.statusCode} - ${response.body}');
+      }
+      
+      print('✅ Student lock API call successful');
+    } catch (e) {
+      print('❌ Error in lockStudent API call: $e');
+      throw Exception('Error locking student: $e');
+    }
+  }
+
+  // Check if student is locked
+  Future<Map<String, dynamic>> getStudentLockStatus(String enrollNumber) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/admin/check-student-lock/$enrollNumber'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'isLocked': data['isLocked'] ?? false,
+          'tabSwitchCount': data['tabSwitchCount'] ?? 0,
+          'lockedAt': data['lockedAt'],
+        };
+      } else {
+        return {'isLocked': false, 'tabSwitchCount': 0, 'lockedAt': null};
+      }
+    } catch (e) {
+      print('Error checking student lock status: $e');
+      return {'isLocked': false, 'tabSwitchCount': 0, 'lockedAt': null};
+    }
+  }
+
+  // Backward compatibility - Check if student is locked (returns bool only)
+  Future<bool> isStudentLocked(String enrollNumber) async {
+    final status = await getStudentLockStatus(enrollNumber);
+    return status['isLocked'] ?? false;
+  }
+
+  // Get locked students
+  Future<List<Map<String, dynamic>>> getLockedStudents() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/admin/locked-students'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        throw Exception('Failed to get locked students: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting locked students: $e');
+      throw Exception('Error getting locked students: $e');
+    }
+  }
+
+  // Unlock student account
+  Future<void> unlockStudent(String enrollNumber) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.post(
+        Uri.parse('$url/admin/unlock-student'),
+        headers: authService.authHeaders,
+        body: json.encode({
+          'enrollNumber': enrollNumber,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to unlock student: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error unlocking student: $e');
+      throw Exception('Error unlocking student: $e');
+    }
+  }
+
+  // Get online users
+  Future<List<User>> getOnlineUsers() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/admin/online-users'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((user) => User.fromJson(user)).toList();
+      } else {
+        print('Failed to fetch online users: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching online users: $e');
+      return [];
+    }
+  }
+
+  // Admin shutdown notification method
+  Future<bool> sendAdminShutdownNotification() async {
+    try {
+      print('🚨 Sending admin shutdown notification...');
+      
+      final url = await baseUrl;
+      final response = await http.post(
+        Uri.parse('$url/admin/shutdown-notification'),
+        headers: authService.authHeaders,
+      );
+
+      print('Shutdown notification response status: ${response.statusCode}');
+      print('Shutdown notification response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('✅ Shutdown notification sent successfully');
+        return true;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        print('❌ Failed to send shutdown notification: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('❌ Error sending shutdown notification: $e');
+      return false;
+    }
+  }
+
+  // Seed sample data for testing
+  Future<bool> seedSampleData() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.post(
+        Uri.parse('$url/exercises/debug/seed'),
+        headers: authService.authHeaders,
+      );
+
+      print('Seed response status: ${response.statusCode}');
+      print('Seed response body: ${response.body}');
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error seeding data: $e');
+      return false;
+    }
+  }
+
+  Future<List<Subject>> getSubjects() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/exercises/subjects'),
+        headers: authService.authHeaders,
+      );
+
+      print('Subjects response status: ${response.statusCode}');
+      print('Subjects response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final dynamic data = json.decode(response.body);
+        
+        // Handle null response
+        if (data == null) {
+          print('Received null response for subjects');
+          return [];
+        }
+        
+        if (data is List) {
+          return data
+              .map((json) => Subject.fromJson(json as Map<String, dynamic>))
+              .toList();
+        } else if (data is Map && data.containsKey('subjects')) {
+          // Handle wrapped response
+          final subjects = data['subjects'];
+          if (subjects is List) {
+            return subjects
+                .map((json) => Subject.fromJson(json as Map<String, dynamic>))
+                .toList();
+          }
+        } else {
+          print('Expected List but got: ${data.runtimeType}');
+          print('Data content: $data');
+          return [];
+        }
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        print('HTTP Error ${response.statusCode}: ${response.body}');
+        throw Exception('Failed to load subjects: ${response.statusCode}');
+      }
+      
+      return [];
+    } catch (e) {
+      print('Error fetching subjects: $e');
+      if (e.toString().contains('Authentication')) {
+        rethrow;
+      }
+      // Return empty list instead of throwing to prevent app crashes
+      return [];
+    }
+  }
+
+  Future<List<Exercise>> getExercisesBySubject(int subjectId) async {
+    try {
+      print('Fetching exercises for subject ID: $subjectId');
+      
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/exercises/subject/$subjectId'),
+        headers: authService.authHeaders,
+      );
+
+      print('Exercises response status: ${response.statusCode}');
+      print('Exercises response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final dynamic data = json.decode(response.body);
+        
+        if (data == null) {
+          print('Received null response for exercises');
+          return [];
+        }
+
+        if (data is List) {
+          final exercises = <Exercise>[];
+          for (final item in data) {
+            try {
+              if (item is Map<String, dynamic>) {
+                exercises.add(Exercise.fromJson(item));
+              } else {
+                print('Invalid exercise item: $item');
+              }
+            } catch (e) {
+              print('Error parsing exercise: $e');
+              print('Exercise data: $item');
+            }
+          }
+          return exercises;
+        } else if (data is Map) {
+          print('Received Map instead of List: $data');
+          // Check if it's an error response
+          if (data.containsKey('message') || data.containsKey('error')) {
+            print('Error from server: ${data['message'] ?? data['error']}');
+          }
+          return [];
+        } else {
+          print('Expected List but got: ${data.runtimeType}');
+          print('Data content: $data');
+          return [];
+        }
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 404) {
+        print('Subject not found or no exercises available');
+        return [];
+      } else {
+        print('HTTP Error ${response.statusCode}: ${response.body}');
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching exercises: $e');
+      if (e.toString().contains('Authentication')) {
+        rethrow;
+      }
+      return [];
+    }
+  }
+
+  Future<Exercise?> getExercise(int exerciseId) async {
+    try {
+      print('=== FETCHING EXERCISE $exerciseId ===');
+      
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/exercises/$exerciseId'),
+        headers: authService.authHeaders,
+      );
+
+      print('Exercise response status: ${response.statusCode}');
+      print('Exercise response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print('Decoded exercise data: $data');
+        
+        if (data is Map<String, dynamic>) {
+          final exercise = Exercise.fromJson(data);
+          print('Successfully parsed exercise: ${exercise.title}');
+          print('Test cases count: ${exercise.testCases.length}');
+          
+          return exercise;
+        } else {
+          print('Expected Map but got: ${data.runtimeType}');
+          return null;
+        }
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 404) {
+        throw Exception('Exercise not found');
+      } else {
+        throw Exception('Failed to load exercise: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching exercise: $e');
+      if (e.toString().contains('Authentication') || 
+          e.toString().contains('not found')) {
+        rethrow;
+      }
+      return null;
+    }
+  }
+
+  Future<bool> deleteExercise(int exerciseId) async {
+    try {
+      print('🗑️ DELETE EXERCISE ATTEMPT');
+      print('Exercise ID: $exerciseId');
+      final url = await baseUrl;
+      print('URL: $url/admin/exercises/$exerciseId');
+      print('Headers: ${authService.authHeaders}');
+      
+      final response = await http.delete(
+        Uri.parse('$url/admin/exercises/$exerciseId'),
+        headers: authService.authHeaders,
+      );
+
+      print('🌐 DELETE Response Status: ${response.statusCode}');
+      print('🌐 DELETE Response Headers: ${response.headers}');
+      print('🌐 DELETE Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('✅ Exercise deleted successfully');
+        return true;
+      } else if (response.statusCode == 401) {
+        print('❌ Authentication failed');
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        print('❌ Access denied');
+        throw Exception('Access denied. Admin privileges required.');
+      } else if (response.statusCode == 404) {
+        print('❌ Exercise not found');
+        throw Exception('Exercise not found.');
+      } else {
+        print('❌ Unknown error');
+        try {
+          final errorData = json.decode(response.body);
+          throw Exception('Failed to delete exercise: ${errorData['message'] ?? response.body}');
+        } catch (e) {
+          throw Exception('Failed to delete exercise: ${response.body}');
+        }
+      }
+    } catch (e) {
+      print('💥 Error deleting exercise: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> runTestCases(int exerciseId, String code) async {
+    try {
+      print('Running test cases for exercise $exerciseId');
+      print('Code length: ${code.length} characters');
+      
+      final url = await baseUrl;
+      final response = await http.post(
+        Uri.parse('$url/exercises/$exerciseId/test'),
+        headers: authService.authHeaders,
+        body: json.encode({
+          'code': code,
+          'testOnly': true // Flag to run only visible test cases
+        }),
+      );
+
+      print('Test run response status: ${response.statusCode}');
+      print('Test run response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is Map<String, dynamic>) {
+          return data;
+        } else {
+          throw Exception('Invalid response format');
+        }
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception('Failed to run test cases: ${errorData['message'] ?? response.body}');
+      }
+    } catch (e) {
+      print('Error running test cases: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> submitCode(int exerciseId, String code) async {
+    try {
+      print('Submitting code for exercise $exerciseId');
+      print('Code length: ${code.length} characters');
+      
+      final url = await baseUrl;
+      final response = await http.post(
+        Uri.parse('$url/exercises/$exerciseId/submit'),
+        headers: authService.authHeaders,
+        body: json.encode({
+          'code': code,
+          'finalSubmission': true // Flag for final submission
+        }),
+      );
+
+      print('Submit response status: ${response.statusCode}');
+      print('Submit response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is Map<String, dynamic>) {
+          return data;
+        } else {
+          throw Exception('Invalid response format');
+        }
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception('Failed to submit code: ${errorData['message'] ?? response.body}');
+      }
+    } catch (e) {
+      print('Error submitting code: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> markExerciseCompleted(int exerciseId) async {
+  try {
+    print('🔄 Marking exercise $exerciseId as completed via API');
+    
+    final url = await baseUrl;
+    final response = await http.post(
+      Uri.parse('$url/student/mark-completed'),
+      headers: authService.authHeaders,
+      body: json.encode({
+        'exerciseId': exerciseId,
+        'timestamp': DateTime.now().toIso8601String(),
+      }),
+    );
+
+    print('Mark completed response status: ${response.statusCode}');
+    print('Mark completed response body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      print('✅ Exercise $exerciseId marked as completed successfully');
+      return true;
+    } else if (response.statusCode == 401) {
+      throw Exception('Authentication failed. Please login again.');
+    } else {
+      print('❌ Failed to mark exercise as completed: ${response.statusCode}');
+      return false;
+    }
+  } catch (e) {
+    print('❌ Error marking exercise as completed: $e');
+    return false;
+  }
+}
+
+  // NEW METHOD: Remove completion status (for testing purposes)
+  Future<bool> unmarkExerciseCompleted(int exerciseId) async {
+    try {
+      print('🔄 Removing completion status for exercise $exerciseId');
+      
+      final url = await baseUrl;
+      final response = await http.delete(
+        Uri.parse('$url/student/complete-exercise/$exerciseId'),
+        headers: authService.authHeaders,
+      );
+
+      print('Unmark completed response status: ${response.statusCode}');
+      print('Unmark completed response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('✅ Exercise completion status removed successfully');
+        return true;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 404) {
+        // Exercise was not completed - this is still a success
+        print('ℹ️ Exercise was not marked as completed');
+        return true;
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception('Failed to remove completion status: ${errorData['message'] ?? response.body}');
+      }
+    } catch (e) {
+      print('❌ Error removing completion status: $e');
+      rethrow;
+    }
+  }
+
+  // Enhanced getCompletedExercises method to handle different response formats
+@override
+Future<List<Map<String, dynamic>>> getCompletedExercises() async {
+  try {
+    final url = await baseUrl;
+    final response = await http.get(
+      Uri.parse('$url/student/completed-exercises'),
+      headers: authService.authHeaders,
+    );
+
+    print('Completed exercises response status: ${response.statusCode}');
+    print('Completed exercises response body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      
+      List<Map<String, dynamic>> completedExercises = [];
+      
+      if (data is List) {
+        // Handle direct array response
+        for (var item in data) {
+          if (item is Map<String, dynamic>) {
+            completedExercises.add(item);
+          }
+        }
+      } else if (data is Map<String, dynamic>) {
+        // Handle wrapped response
+        if (data.containsKey('completedExercises')) {
+          final exercises = data['completedExercises'];
+          if (exercises is List) {
+            for (var item in exercises) {
+              if (item is Map<String, dynamic>) {
+                completedExercises.add(item);
+              }
+            }
+          }
+        } else if (data.containsKey('exercises')) {
+          final exercises = data['exercises'];
+          if (exercises is List) {
+            for (var item in exercises) {
+              if (item is Map<String, dynamic>) {
+                completedExercises.add(item);
+              }
+            }
+          }
+        }
+      }
+      
+      print('Processed completed exercises: ${completedExercises.length} items');
+      for (var exercise in completedExercises) {
+        print('  - Exercise ID: ${exercise['exercise_id']}, Status: ${exercise['status']}, Score: ${exercise['score']}');
+      }
+      
+      return completedExercises;
+    } else if (response.statusCode == 401) {
+      throw Exception('Authentication failed. Please login again.');
+    } else {
+      throw Exception('Failed to load completed exercises: ${response.statusCode}');
+    }
+  } catch (e) {
+    print('Error fetching completed exercises: $e');
+    if (e.toString().contains('Authentication')) {
+      rethrow;
+    }
+    return [];
+  }
+}
+
+  // ENHANCED METHOD: Check if specific exercise is completed
+  Future<bool> isExerciseCompleted(int exerciseId) async {
+    try {
+      print('🔄 Checking if exercise $exerciseId is completed');
+      
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/student/exercise-completion/$exerciseId'),
+        headers: authService.authHeaders,
+      );
+
+      print('Exercise completion check response status: ${response.statusCode}');
+      print('Exercise completion check response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final isCompleted = data['is_completed'] == true || data['isCompleted'] == true;
+        print('✅ Exercise $exerciseId completion status: $isCompleted');
+        return isCompleted;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 404) {
+        print('ℹ️ Exercise completion status not found, assuming not completed');
+        return false;
+      } else {
+        print('❌ HTTP Error ${response.statusCode}: ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('❌ Error checking exercise completion status: $e');
+      if (e.toString().contains('Authentication')) {
+        rethrow;
+      }
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getStudentSubmissions() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/student/submissions'),
+        headers: authService.authHeaders,
+      );
+
+      print('Submissions response status: ${response.statusCode}');
+      print('Submissions response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        } else if (data is Map && data.containsKey('submissions')) {
+          final submissions = data['submissions'];
+          if (submissions is List) {
+            return List<Map<String, dynamic>>.from(submissions);
+          }
+        }
+        return [];
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        throw Exception('Failed to load submissions: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching submissions: $e');
+      if (e.toString().contains('Authentication')) {
+        rethrow;
+      }
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> getAdminAnalytics() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/admin/analytics'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        throw Exception('Failed to load analytics: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching analytics: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> createExercise(Map<String, dynamic> exerciseData) async {
+    try {
+      print('Creating exercise with data: $exerciseData');
+      
+      // Ensure all values are properly serializable
+      // IMPORTANT: Only convert generic Map objects, preserve Map<String, dynamic>
+      final cleanedData = <String, dynamic>{};
+      exerciseData.forEach((key, value) {
+        if (value is List) {
+          cleanedData[key] = value.map((item) {
+            // If already Map<String, dynamic>, keep it as is
+            if (item is Map<String, dynamic>) {
+              return item;
+            }
+            // Only convert generic Map to Map<String, dynamic>
+            if (item is Map) {
+              return Map<String, dynamic>.from(item);
+            }
+            return item;
+          }).toList();
+        } else if (value is Map<String, dynamic>) {
+          // Already correct type, keep as is
+          cleanedData[key] = value;
+        } else if (value is Map) {
+          // Generic Map, convert it
+          cleanedData[key] = Map<String, dynamic>.from(value);
+        } else {
+          cleanedData[key] = value;
+        }
+      });
+      
+      print('Cleaned exercise data: $cleanedData');
+      final jsonBody = json.encode(cleanedData);
+      print('JSON body to send: $jsonBody');
+      
+      final url = await baseUrl;
+      final response = await http.post(
+        Uri.parse('$url/admin/exercises'),
+        headers: {
+          ...authService.authHeaders,
+          'Content-Type': 'application/json',
+        },
+        body: jsonBody,
+      );
+
+      print('Create exercise response status: ${response.statusCode}');
+      print('Create exercise response body: ${response.body}');
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return true;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception('Failed to create exercise: ${errorData['message'] ?? response.body}');
+      }
+    } catch (e) {
+      print('Error creating exercise: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> updateExercise(int exerciseId, Map<String, dynamic> exerciseData) async {
+    try {
+      print('Updating exercise $exerciseId with data: $exerciseData');
+      
+      final url = await baseUrl;
+      final response = await http.put(
+        Uri.parse('$url/admin/exercises/$exerciseId'),
+        headers: authService.authHeaders,
+        body: json.encode(exerciseData),
+      );
+
+      print('Update exercise response status: ${response.statusCode}');
+      print('Update exercise response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        return true;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else if (response.statusCode == 404) {
+        throw Exception('Exercise not found.');
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception('Failed to update exercise: ${errorData['message'] ?? response.body}');
+      }
+    } catch (e) {
+      print('Error updating exercise: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> createSubject(Map<String, dynamic> subjectData) async {
+    try {
+      print('Creating subject with data: $subjectData');
+      
+      final url = await baseUrl;
+      final response = await http.post(
+        Uri.parse('$url/admin/subjects'),
+        headers: authService.authHeaders,
+        body: json.encode(subjectData),
+      );
+
+      print('Create subject response status: ${response.statusCode}');
+      print('Create subject response body: ${response.body}');
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return true;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception('Failed to create subject: ${errorData['message'] ?? response.body}');
+      }
+    } catch (e) {
+      print('Error creating subject: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> deleteSubject(int subjectId) async {
+    try {
+      print('🗑️ DELETE SUBJECT ATTEMPT');
+      print('Subject ID: $subjectId');
+      final url = await baseUrl;
+      print('URL: $url/admin/subjects/$subjectId');
+      print('Headers: ${authService.authHeaders}');
+      
+      final response = await http.delete(
+        Uri.parse('$url/admin/subjects/$subjectId'),
+        headers: authService.authHeaders,
+      );
+
+      print('🌐 DELETE Subject Response Status: ${response.statusCode}');
+      print('🌐 DELETE Subject Response Headers: ${response.headers}');
+      print('🌐 DELETE Subject Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('✅ Subject deleted successfully');
+        return true;
+      } else if (response.statusCode == 401) {
+        print('❌ Authentication failed');
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        print('❌ Access denied');
+        throw Exception('Access denied. Admin privileges required.');
+      } else if (response.statusCode == 404) {
+        print('❌ Subject not found');
+        throw Exception('Subject not found.');
+      } else {
+        print('❌ Unknown error');
+        try {
+          final errorData = json.decode(response.body);
+          throw Exception('Failed to delete subject: ${errorData['message'] ?? response.body}');
+        } catch (e) {
+          throw Exception('Failed to delete subject: ${response.body}');
+        }
+      }
+    } catch (e) {
+      print('💥 Error deleting subject: $e');
+      rethrow;
+    }
+  }
+
+  // Get last submission for an exercise
+  Future<Map<String, dynamic>?> getLastSubmission(int exerciseId) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/student/last-submission/$exerciseId'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['hasSubmission'] == true) {
+          return data['submission'];
+        }
+        return null;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        throw Exception('Failed to load last submission: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching last submission: $e');
+      if (e.toString().contains('Authentication')) {
+        rethrow;
+      }
+      return null;
+    }
+  }
+
+  // Admin: Get student exercises with completion status
+  Future<List<Map<String, dynamic>>> getStudentExercises(int studentId) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/admin/student-exercises/$studentId'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        }
+        return [];
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        throw Exception('Failed to load student exercises: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching student exercises: $e');
+      rethrow;
+    }
+  }
+
+  // Admin: Get student progress for specific exercise
+  Future<Map<String, dynamic>> getStudentProgress(int studentId, int exerciseId) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/admin/student-progress/$studentId/$exerciseId'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        throw Exception('Failed to load student progress: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching student progress: $e');
+      rethrow;
+    }
+  }
+
+  // Admin: Get all student activities
+  Future<List<Map<String, dynamic>>> getStudentActivities(int studentId) async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/admin/student-activities/$studentId'),
+        headers: authService.authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        }
+        return [];
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. Admin privileges required.');
+      } else {
+        throw Exception('Failed to load student activities: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching student activities: $e');
+      rethrow;
+    }
+  }
+
+  // Helper method to check API connectivity
+  Future<bool> checkConnectivity() async {
+    try {
+      final url = await baseUrl;
+      final response = await http.get(
+        Uri.parse('$url/health'),
+        headers: authService.authHeaders,
+      ).timeout(Duration(seconds: 5));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Connectivity check failed: $e');
+      return false;
+    }
+  }
+
+  // Helper method to retry failed requests
+  Future<T> retryRequest<T>(Future<T> Function() request, {int maxRetries = 3}) async {
+    int retryCount = 0;
+    
+    while (retryCount < maxRetries) {
+      try {
+        return await request();
+      } catch (e) {
+        retryCount++;
+        if (retryCount >= maxRetries) {
+          rethrow;
+        }
+        
+        print('Request failed, retrying ($retryCount/$maxRetries): $e');
+        await Future.delayed(Duration(seconds: retryCount));
+      }
+    }
+    
+    throw Exception('Max retries exceeded');
+  }
+}

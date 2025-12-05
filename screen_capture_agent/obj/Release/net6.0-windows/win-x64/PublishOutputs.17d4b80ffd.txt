@@ -1,0 +1,2 @@
+C:\Users\user\LabAssistant\screen_capture_agent\bin\Release\net6.0-windows\win-x64\publish\ScreenCaptureAgent.pdb
+C:\Users\user\LabAssistant\screen_capture_agent\bin\Release\net6.0-windows\win-x64\publish\ScreenCaptureAgent.exe

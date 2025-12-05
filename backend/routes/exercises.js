@@ -274,6 +274,12 @@ router.post('/:exerciseId/test', auth, async (req, res) => {
 // Final submission - All test cases (visible + hidden)
 router.post('/:exerciseId/submit', auth, async (req, res) => {
   try {
+    console.log('\n🔥🔥🔥 SUBMIT ENDPOINT HIT! 🔥🔥🔥');
+    console.log('Request received at:', new Date().toISOString());
+    console.log('Request params:', req.params);
+    console.log('Request body keys:', Object.keys(req.body));
+    console.log('Auth user:', req.user);
+    
     const { exerciseId } = req.params;
     const { code } = req.body;
     const userId = req.user.userId;
@@ -338,7 +344,7 @@ router.post('/:exerciseId/submit', auth, async (req, res) => {
         await pool.query(
           `INSERT INTO submissions (
             user_id, exercise_id, code, language, status, score, 
-            test_cases_passed, total_test_cases, created_at
+            test_cases_passed, total_test_cases, submitted_at
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
           [userId, exerciseId, code, 'c', 'compilation_error', 0, 0, allTestCases.length]
         );
@@ -376,18 +382,31 @@ router.post('/:exerciseId/submit', auth, async (req, res) => {
 
     // Save submission with complete results
     try {
-      await pool.query(
+      console.log(' Attempting to save submission to database...');
+      console.log(`  User ID: ${userId}`);
+      console.log(`  Exercise ID: ${exerciseId}`);
+      console.log(`  Status: ${allTestsPassed ? 'passed' : 'failed'}`);
+      console.log(`  Score: ${score}%`);
+      console.log(`  Tests passed: ${totalPassedTests}/${totalTests}`);
+      
+      const insertResult = await pool.query(
         `INSERT INTO submissions (
           user_id, exercise_id, code, language, status, score, 
-          test_cases_passed, total_test_cases, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+          test_cases_passed, total_test_cases, submitted_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        RETURNING id, status, score, submitted_at`,
         [
           userId, exerciseId, code, 'c', 
           allTestsPassed ? 'passed' : 'failed', 
           score, totalPassedTests, totalTests
         ]
       );
-      console.log('Final submission saved successfully');
+      
+      console.log(' Submission saved successfully!');
+      console.log(`   Submission ID: ${insertResult.rows[0].id}`);
+      console.log(`   Status: ${insertResult.rows[0].status}`);
+      console.log(`   Score: ${insertResult.rows[0].score}%`);
+      console.log(`   Timestamp: ${insertResult.rows[0].submitted_at}`);
 
       // Also save to student activities for detailed tracking
       await pool.query(
@@ -452,7 +471,7 @@ router.post('/:exerciseId/submit', auth, async (req, res) => {
       await pool.query(
         `INSERT INTO submissions (
           user_id, exercise_id, code, language, status, score, 
-          test_cases_passed, total_test_cases, created_at
+          test_cases_passed, total_test_cases, submitted_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
         [req.user.userId, req.params.exerciseId, req.body.code || '', 'c', 'error', 0, 0, 0]
       );

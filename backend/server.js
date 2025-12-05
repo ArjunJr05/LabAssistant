@@ -27,6 +27,15 @@ app.set('io', io);
 // Middleware
 app.use(cors());
 
+// Request logging middleware for ALL API routes
+app.use('/api', (req, res, next) => {
+  console.log(`\n === ${req.method} ${req.originalUrl} ===`);
+  console.log('Time:', new Date().toISOString());
+  console.log('Content-Type:', req.headers['content-type']);
+  console.log('Authorization:', req.headers['authorization'] ? 'Present' : 'Missing');
+  next();
+});
+
 // Request logging middleware for admin routes
 app.use('/api/admin', (req, res, next) => {
   console.log(`\n=== ${req.method} ${req.path} ===`);
